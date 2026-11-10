@@ -176,14 +176,26 @@ function miniTable(): string[] {
   return c.rows();
 }
 
-function thought(): string[] {
+function thoughtBubble(): CharCanvas {
   const c = new CharCanvas(15, 13);
   c.disc(9, 5, 5.8, 5, 'W');
   c.disc(3, 10.5, 1.6, 1.6, 'W');
   c.disc(1, 12.5, 1, 1, 'W');
-  // семечка внутри
+  return c;
+}
+
+/** Мысль-облачко с семечкой: Пушок проголодался. */
+function thought(): string[] {
+  const c = thoughtBubble();
   c.set(9, 2, 'E').set(8, 3, 'E').set(9, 3, 'W').set(10, 3, 'E').set(8, 4, 'E').set(9, 4, 'W').set(10, 4, 'E');
   c.set(8, 5, 'E').set(9, 5, 'W').set(10, 5, 'E').set(9, 6, 'E').set(9, 7, 'E');
+  return c.rows();
+}
+
+/** Мысль с облачком: «денежки зарабатывают на облачке». */
+function thoughtCloud(): string[] {
+  const c = thoughtBubble();
+  c.blit(['..CCC..', '.CCCCCC', 'CCCCCCC', '.CCCCC.'], 6, 3);
   return c.rows();
 }
 
@@ -216,6 +228,7 @@ export const ITEM_ICONS = {
   house: def(house()),
   miniTable: def(miniTable()),
   thought: def(thought()),
+  thoughtCloud: def(thoughtCloud()),
   pot: def(pot()),
   spoon: SPOON,
   coin: COIN,

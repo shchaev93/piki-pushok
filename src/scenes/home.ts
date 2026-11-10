@@ -7,6 +7,9 @@ import { during, Pushok, tween, wait, type Script } from '../pushok/actor';
 import type { Store } from '../save/store';
 import { isHatId } from '../sprites/hats';
 import type { Game, Scene } from './scene';
+import { moodOf, satietyNow, unseenUnlocks } from '../game/rules';
+import { ITEM_ICONS } from '../sprites/items';
+import { drawCoins, drawSatiety } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
 import { ICONS, type IconId } from '../sprites/icons';
 import { bitmap } from '../sprites/render';
@@ -77,8 +80,17 @@ export class HomeScene implements Scene {
     this.pushok.guitar = store.data.equipped.guitar;
   }
 
+  /** Сытость сейчас (падает в реальном времени). */
+  private satiety() {
+    return satietyNow(this.store.data.satiety, this.g.now());
+  }
+
   update(dt: number) {
     this.time += dt;
+    const mood = moodOf(this.satiety());
+    // очень голодный: грустно сидит и двигается медленнее (без болезней и побегов)
+    this.pushok.idleFrame = mood === 'veryHungry' ? 'sad' : 'base';
+    this.pushok.speedFactor = mood === 'veryHungry' ? CONFIG.hunger.veryHungrySpeedFactor : 1;
     this.pushok.update(dt);
     for (const p of this.particles) {
       p.life -= dt;
@@ -141,20 +153,40 @@ export class HomeScene implements Scene {
 
   private tapPushok() {
     if (this.pushok.busy) return;
+    const guitar = this.pushok.guitar;
+    if (guitar) {
+      // с гитарой в лапках Пушок играет мелодию
+      this.sfx.melody(guitar);
+      this.pushok.run('music', this.playGuitar());
+      return;
+    }
     this.sfx.play('joy');
     this.spawn('heart', this.pushok.x, this.pushok.y - 18, 0, -14, 900);
     this.pushok.run(null, this.pushok.joy(2));
   }
 
   private tapButton(id: UiButton) {
-    if (id === 'cloud') {
+    if (id === 'cloud' || id === 'basket') {
       this.sfx.play('tap');
-      this.g.go('cloud');
+      this.g.go(id === 'cloud' ? 'cloud' : 'shop');
       return;
     }
-    // Гардероб и магазин появятся на этапах 3-4. Пока кнопка мягко качается.
+    // Гардероб появится на этапе 4. Пока кнопка мягко качается.
     this.sfx.play('wiggle');
     this.wiggle[id] = 500;
+  }
+
+  private *playGuitar(): Script {
+    const p = this.pushok;
+    let n = 0;
+    yield* during(1400, (t) => {
+      p.frame = Math.floor(t / 170) % 2 ? 'happy2' : 'happy1';
+      p.lift = -Math.abs(Math.sin(t / 170)) * 1.5;
+      if (t > n) {
+        n += 340;
+        this.spawn('note', p.x + 6 + Math.random() * 6, p.y - 18, 4 + Math.random() * 6, -14, 1000);
+      }
+    });
   }
 
   // ---------- занятия ----------
@@ -265,18 +297,10 @@ export class HomeScene implements Scene {
         break;
       }
       case 'table': {
-        p.sortY = 97.9; // за столиком
+        // за столиком кормят: открываем крупный план
+        p.sortY = 97.9;
         yield* p.hopTo(o.rest.x, o.rest.y);
-        yield* during(ms, (t) => {
-          const k = Math.floor(t / 260);
-          p.frame = k % 2 ? 'eatOpen' : 'eatMunch';
-          if (k !== Math.floor((t - 17) / 260) && k % 2) {
-            sfx.play('chew');
-            this.spawn('crumb', p.x - 3 + Math.random() * 6, p.y - 8, (Math.random() - 0.5) * 10, 12, 500);
-          }
-        });
-        sfx.play('joy');
-        yield* p.joy(1, 3);
+        this.g.go('feed');
         break;
       }
       case 'slide': {
@@ -370,6 +394,10 @@ export class HomeScene implements Scene {
       draw: () => {
         if (this.ropeAngle !== null) this.drawRope(r, false);
         r.pushok(p);
+        if (!p.busy && moodOf(this.satiety()) !== 'full') {
+          const bob = Math.round(Math.sin(this.time / 400));
+          r.sprite('item.thought', ITEM_ICONS.thought, p.x + 2, p.y - 31 + bob);
+        }
         if (p.overlay) r.sprite(`home.${p.overlay.sprite}`, HOME_SPRITES[p.overlay.sprite], p.overlay.x, p.overlay.y);
         if (this.ropeAngle !== null) this.drawRope(r, true);
       },
@@ -453,6 +481,14 @@ export class HomeScene implements Scene {
     }
     const g = this.gearRect(safe);
     r.bmp(bitmap('icon.gear', ICONS.gear), g.x, g.y);
+    // сытость сердечком и денежки кружочками, без цифр
+    drawSatiety(r, g.x + 18, g.y, this.satiety());
+    drawCoins(r, g.x + 35, g.y + 1, this.store.data.coins, 10, 30);
+    if (unseenUnlocks(this.store.data).length) {
+      // в гардеробе обновка: искорка над кнопкой шкафа
+      const w = this.buttonRects(safe).find((b) => b.id === 'wardrobe')!;
+      if (Math.floor(this.time / 300) % 2) r.sprite('small.sparkle', SMALL_SPRITES.sparkle, w.x + 17, w.y);
+    }
     if (this.gearHold > 0) {
       // кольцо из пикселей вокруг шестеренки
       const n = 28;

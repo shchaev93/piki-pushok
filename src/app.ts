@@ -5,6 +5,8 @@ import { Renderer } from './engine/renderer';
 import { Pushok } from './pushok/actor';
 import type { PersistState, Store } from './save/store';
 import { CloudScene } from './scenes/cloud';
+import { FeedScene } from './scenes/feed';
+import { ShopScene } from './scenes/shop';
 import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
@@ -71,6 +73,10 @@ export class App {
     switch (id) {
       case 'cloud':
         return new CloudScene(this.game);
+      case 'shop':
+        return new ShopScene(this.game);
+      case 'feed':
+        return new FeedScene(this.game);
       default:
         return new HomeScene(this.game);
     }

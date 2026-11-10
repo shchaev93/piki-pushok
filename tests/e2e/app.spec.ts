@@ -66,7 +66,7 @@ test('все цели касания не меньше 64 CSS px', async ({ page
 test('тап по каждому предмету запускает занятие (скриншоты в процессе)', async ({ page }, info) => {
   await page.goto('./?nohint');
   await ready(page);
-  const ids = ['bed', 'climber', 'bath', 'toilet', 'kitchen', 'trampoline', 'table', 'slide', 'rope'];
+  const ids = ['bed', 'climber', 'bath', 'toilet', 'kitchen', 'trampoline', 'slide', 'rope'];
   for (const id of ids) {
     const c = await center(page, `obj:${id}`);
     await page.touchscreen.tap(c.x, c.y);
@@ -256,4 +256,82 @@ test('облачко: выйти домой можно в любой момен�
   await expect.poll(async () => (await cloud(page)).id).toBe('home');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save')!));
   expect(saved.butterfliesTotal).toBe(1);
+});
+
+// ---------- этап 3: голод, магазин, кормление ----------
+
+const sceneId = async (page: Page) => (await piki(page)).evaluate((p) => (p.app as unknown as { scene: { id: string } }).scene.id);
+const save = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save')!));
+
+/** Подложить сохранение до запуска игры (один раз за вкладку). */
+async function withSave(page: Page, patch: Record<string, unknown>) {
+  await page.addInitScript((patch) => {
+    if (sessionStorage.getItem('__seeded')) return;
+    sessionStorage.setItem('__seeded', '1');
+    const now = Date.now();
+    const p = { ...(patch as Record<string, unknown>) };
+    const value = (p.satietyValue as number | undefined) ?? 100;
+    delete p.satietyValue;
+    const base = {
+      version: 2, createdAt: now, coins: 0, butterfliesTotal: 0, satiety: { value, at: now },
+      basket: {}, dishes: [], unlocked: { hats: [], guitars: [] }, seen: [],
+      equipped: { hat: null, guitar: null }, settings: { sound: true }, home: { pushokAt: null },
+    };
+    localStorage.setItem('piki-pushok.save', JSON.stringify({ ...base, ...p }));
+  }, patch);
+  await page.goto('./?nohint');
+  await ready(page);
+}
+
+async function dragTo(page: Page, from: { x: number; y: number }, toScene: { x: number; y: number }) {
+  const to = await (await piki(page)).evaluate((p, t) => (p.app as unknown as { toCss(x: number, y: number): { x: number; y: number } }).toCss(t.x, t.y), toScene);
+  await drag(page, from, to, 16);
+}
+
+test('магазин: покупка за денежки, без денежек продукт только покачивается', async ({ page }, info) => {
+  await withSave(page, { coins: 5 });
+  const b = await center(page, 'btn:basket');
+  await page.touchscreen.tap(b.x, b.y);
+  await expect.poll(() => sceneId(page)).toBe('shop');
+  const seeds = await center(page, 'food:seeds');
+  await page.touchscreen.tap(seeds.x, seeds.y);
+  await expect.poll(async () => (await save(page)).coins).toBe(1);
+  expect((await save(page)).basket).toEqual({ seeds: 1 });
+  const apple = await center(page, 'food:apple');
+  await page.touchscreen.tap(apple.x, apple.y);
+  await page.waitForTimeout(300);
+  expect((await save(page)).coins).toBe(1);
+  expect((await save(page)).basket).toEqual({ seeds: 1 });
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-shop.png` });
+});
+
+test('голод и кормление: голодный Пушок, семечки ко рту, сытость растет', async ({ page }, info) => {
+  await withSave(page, { satietyValue: 15, basket: { seeds: 1, apple: 2 } });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-hungry-home.png` });
+  const t = await center(page, 'obj:table');
+  await page.touchscreen.tap(t.x, t.y);
+  await expect.poll(() => sceneId(page), { timeout: 8000 }).toBe('feed');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-feed-before.png` });
+  // слоты: семечки, яблоко → ширина 2×24+3 = 51, первый слот с x = 61
+  const from = await (await piki(page)).evaluate((p) => (p.app as unknown as { toCss(x: number, y: number): { x: number; y: number } }).toCss(73, 93));
+  await dragTo(page, from, { x: 97.5, y: 58.5 });
+  await expect.poll(async () => (await save(page)).basket).toEqual({ apple: 2 });
+  expect((await save(page)).satiety.value).toBeGreaterThan(39);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-feed-eating.png` });
+});
+
+test('сытый Пушок вежливо отказывается, еда остается в корзинке', async ({ page }) => {
+  await withSave(page, { satietyValue: 100, basket: { apple: 1 } });
+  const t = await center(page, 'obj:table');
+  await page.touchscreen.tap(t.x, t.y);
+  await expect.poll(() => sceneId(page), { timeout: 8000 }).toBe('feed');
+  const from = await (await piki(page)).evaluate((p) => (p.app as unknown as { toCss(x: number, y: number): { x: number; y: number } }).toCss(86, 93));
+  await dragTo(page, from, { x: 97.5, y: 58.5 });
+  await page.waitForTimeout(300);
+  expect((await save(page)).basket).toEqual({ apple: 1 });
+  const refusals = await (await piki(page)).evaluate((p) => (p.app as unknown as { scene: { refusals: number } }).scene.refusals);
+  expect(refusals).toBe(1);
 });
