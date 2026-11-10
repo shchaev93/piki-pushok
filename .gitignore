@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dev-dist/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+# ТЗ хранится только локально и в публичный репозиторий не попадает
+TZ-piki-pushok.md
+public/icons/
+public/favicon.png
