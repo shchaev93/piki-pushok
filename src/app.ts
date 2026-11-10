@@ -8,6 +8,7 @@ import { CloudScene } from './scenes/cloud';
 import { FeedScene } from './scenes/feed';
 import { ShopScene } from './scenes/shop';
 import { WardrobeScene } from './scenes/wardrobe';
+import { KitchenScene } from './scenes/kitchen';
 import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
@@ -80,6 +81,8 @@ export class App {
         return new FeedScene(this.game);
       case 'wardrobe':
         return new WardrobeScene(this.game);
+      case 'kitchen':
+        return new KitchenScene(this.game);
       default:
         return new HomeScene(this.game);
     }

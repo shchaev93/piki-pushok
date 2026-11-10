@@ -341,18 +341,12 @@ export class HomeScene implements Scene {
         break;
       }
       case 'kitchen': {
+        // Пушок нюхает кастрюльку и зовет на кухню
         yield* p.hopTo(o.rest.x, o.rest.y);
-        let s = 0;
-        yield* during(ms, (t) => {
-          p.frame = 'sniff';
-          p.lift = -Math.abs(Math.sin(t / 150)) * 1.5;
-          if (t > s) {
-            s += 400;
-            sfx.play('sniff');
-            this.spawn('steam', 166 + Math.random() * 8, 26, (Math.random() - 0.5) * 6, -9, 1200);
-          }
-        });
-        yield* p.joy(1, 3);
+        sfx.play('sniff');
+        this.spawn('steam', 168, 26, 0, -9, 900);
+        yield* during(500, () => (p.frame = 'sniff'));
+        this.g.go('kitchen');
         break;
       }
     }

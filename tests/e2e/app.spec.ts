@@ -66,7 +66,7 @@ test('все цели касания не меньше 64 CSS px', async ({ page
 test('тап по каждому предмету запускает занятие (скриншоты в процессе)', async ({ page }, info) => {
   await page.goto('./?nohint');
   await ready(page);
-  const ids = ['bed', 'climber', 'bath', 'toilet', 'kitchen', 'trampoline', 'slide', 'rope'];
+  const ids = ['bed', 'climber', 'bath', 'toilet', 'trampoline', 'slide', 'rope'];
   for (const id of ids) {
     const c = await center(page, `obj:${id}`);
     await page.touchscreen.tap(c.x, c.y);
@@ -372,4 +372,70 @@ test('гардероб: надеть и снять шляпку, надеть г
   await tap('btn:home');
   await expect.poll(() => sceneId(page)).toBe('home');
   expect((await save(page)).equipped.guitar).toBe('pink');
+});
+
+// ---------- этап 5: кухня ----------
+
+test('кухня: яблоко + семечки в кастрюльку, помешать = пирожок, отнести на столик', async ({ page }, info) => {
+  await withSave(page, { basket: { apple: 1, seeds: 1, bread: 1 }, satietyValue: 30 });
+  const k = await center(page, 'obj:kitchen');
+  await page.touchscreen.tap(k.x, k.y);
+  await expect.poll(() => sceneId(page), { timeout: 8000 }).toBe('kitchen');
+
+  type Kit = { slotCenter(f: string): { x: number; y: number } | null; dishesMade: number };
+  const toCss = (x: number, y: number) =>
+    piki(page).then((h) => h.evaluate((p, t) => (p.app as unknown as { toCss(x: number, y: number): { x: number; y: number } }).toCss(t.x, t.y), { x, y }));
+  const slot = async (f: string) => {
+    const c = await (await piki(page)).evaluate((p, f) => (p.app as unknown as { scene: Kit }).scene.slotCenter(f), f);
+    return toCss(c!.x, c!.y);
+  };
+  // перетащить в кастрюльку
+  for (const f of ['apple', 'seeds']) await drag(page, await slot(f), await toCss(96, 44), 10);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-kitchen-pot.png` });
+
+  // помешать пальцем по кругу (2+ оборота)
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2 * 2.3;
+    pts.push(await toCss(96 + Math.cos(a) * 12, 38 + Math.sin(a) * 6));
+  }
+  await page.evaluate((pts) => {
+    const c = document.getElementById('game')!;
+    c.dispatchEvent(new PointerEvent('pointerdown', { clientX: pts[0].x, clientY: pts[0].y, pointerId: 5, bubbles: true }));
+    for (const p of pts.slice(1)) window.dispatchEvent(new PointerEvent('pointermove', { clientX: p.x, clientY: p.y, pointerId: 5 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: pts.at(-1)!.x, clientY: pts.at(-1)!.y, pointerId: 5 }));
+  }, pts);
+  await expect.poll(async () => (await save(page)).dishes).toEqual([{ dish: 'pie', satiety: 52 }]);
+  expect((await save(page)).basket).toEqual({ bread: 1 });
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-kitchen-done.png` });
+
+  // сразу на столик
+  const t = await center(page, 'btn:table');
+  await page.touchscreen.tap(t.x, t.y);
+  await expect.poll(() => sceneId(page)).toBe('feed');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-feed-dish.png` });
+});
+
+test('кухня: любой другой набор = суп-сюрприз; вынуть продукт тапом', async ({ page }) => {
+  await withSave(page, { basket: { carrot: 1, bread: 1, cheese: 1 } });
+  const k = await center(page, 'obj:kitchen');
+  await page.touchscreen.tap(k.x, k.y);
+  await expect.poll(() => sceneId(page), { timeout: 8000 }).toBe('kitchen');
+  type Kit = { slotCenter(f: string): { x: number; y: number } | null; inPot: string[] };
+  const toCss = (x: number, y: number) =>
+    piki(page).then((h) => h.evaluate((p, t) => (p.app as unknown as { toCss(x: number, y: number): { x: number; y: number } }).toCss(t.x, t.y), { x, y }));
+  const slot = async (f: string) => {
+    const c = await (await piki(page)).evaluate((p, f) => (p.app as unknown as { scene: Kit }).scene.slotCenter(f), f);
+    return toCss(c!.x, c!.y);
+  };
+  for (const f of ['carrot', 'bread', 'cheese']) await drag(page, await slot(f), await toCss(96, 44), 10);
+  const inPot = () => piki(page).then((h) => h.evaluate((p) => [...(p.app as unknown as { scene: Kit }).scene.inPot]));
+  expect(await inPot()).toEqual(['carrot', 'bread', 'cheese']);
+  // тап по сыру (третий в кастрюльке) возвращает его в корзинку
+  const cheeseAt = await toCss(96 - 15 + 15 * 2 - 6 + 6, 38 - 14 + 6);
+  await drag(page, cheeseAt, cheeseAt, 1);
+  expect(await inPot()).toEqual(['carrot', 'bread']);
 });
