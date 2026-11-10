@@ -15,6 +15,12 @@ export type SoundId =
   | 'wiggle'
   | 'joy'
   | 'flush'
+  | 'catch'
+  | 'fanfare'
+  | 'coin'
+  | 'stir'
+  | 'pop'
+  | 'nope'
   | 'hold';
 
 type Ctx = AudioContext;
@@ -117,10 +123,48 @@ export class Sfx {
         this.hiss(t, 0.9, 700, 0.45);
         this.tone(700, t, 0.7, 'sine', 0.25, 180);
         break;
+      case 'catch':
+        this.tone(1047, t, 0.12, 'sine', 0.35);
+        this.tone(1319, t + 0.07, 0.18, 'sine', 0.3);
+        break;
+      case 'fanfare':
+        [523, 659, 784, 1047].forEach((f, i) => this.tone(f, t + i * 0.11, i === 3 ? 0.4 : 0.14, 'triangle', 0.4));
+        break;
+      case 'coin':
+        this.tone(988, t, 0.07, 'square', 0.12);
+        this.tone(1319, t + 0.07, 0.16, 'square', 0.12);
+        break;
+      case 'stir':
+        this.hiss(t, 0.18, 500, 0.25);
+        this.tone(300, t, 0.1, 'sine', 0.15, 360);
+        break;
+      case 'pop':
+        this.tone(600, t, 0.08, 'sine', 0.4, 300);
+        break;
+      case 'nope':
+        // мягкое «м-м» без огорчения
+        this.tone(392, t, 0.12, 'sine', 0.25);
+        this.tone(330, t + 0.13, 0.16, 'sine', 0.25);
+        break;
       case 'hold':
         this.tone(330, t, 0.05, 'sine', 0.15);
         break;
     }
+  }
+
+  /** Короткая мелодия гитары: у каждой гитары своя. */
+  melody(id: string) {
+    if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + 0.02;
+    const songs: Record<string, number[]> = {
+      pink: [523, 659, 784, 659, 523, 587, 659, 523],
+      blue: [392, 494, 587, 494, 440, 392, 330, 392],
+      gold: [523, 784, 659, 1047, 988, 784, 880, 1047],
+    };
+    (songs[id] ?? songs.pink).forEach((f, i) => {
+      this.tone(f, t + i * 0.17, 0.3, 'triangle', 0.35);
+      this.tone(f / 2, t + i * 0.17, 0.25, 'sine', 0.12);
+    });
   }
 
   private tone(freq: number, t: number, dur: number, type: OscillatorType, vol: number, slideTo?: number) {

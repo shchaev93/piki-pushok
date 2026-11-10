@@ -170,3 +170,90 @@ test('работает офлайн после первой загрузки', a
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-offline.png` });
   await context.setOffline(false);
 });
+
+// ---------- этап 2: облачко ----------
+
+type CloudDbg = {
+  id: string;
+  caught: number;
+  currentPhase: string;
+  cloudPos: { x: number; y: number };
+  debugSpawnAtCloud(kind: 'butterfly' | 'apple'): void;
+  debugFinish(): void;
+};
+const cloud = async (page: Page) =>
+  (await piki(page)).evaluate((p) => {
+    const s = (p.app as unknown as { scene: CloudDbg }).scene;
+    return { id: s.id, caught: s.caught, phase: s.currentPhase, pos: s.cloudPos };
+  });
+
+async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, steps = 12) {
+  await page.evaluate(
+    ([fx, fy, tx, ty, n]) => {
+      const c = document.getElementById('game')!;
+      c.dispatchEvent(new PointerEvent('pointerdown', { clientX: fx, clientY: fy, pointerId: 9, bubbles: true }));
+      for (let i = 1; i <= n; i++) {
+        window.dispatchEvent(
+          new PointerEvent('pointermove', { clientX: fx + ((tx - fx) * i) / n, clientY: fy + ((ty - fy) * i) / n, pointerId: 9 }),
+        );
+      }
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: tx, clientY: ty, pointerId: 9 }));
+    },
+    [from.x, from.y, to.x, to.y, steps] as const,
+  );
+}
+
+test('облачко: тянется пальцем, бабочка = денежка (сразу сохраняется), конец раунда', async ({ page }, info) => {
+  await page.goto('./?nohint');
+  await ready(page);
+  const b = await center(page, 'btn:cloud');
+  await page.touchscreen.tap(b.x, b.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('cloud');
+
+  // тянем в любом месте экрана: облачко сдвигается на столько же
+  const before = (await cloud(page)).pos;
+  const vp = page.viewportSize()!;
+  await drag(page, { x: vp.width * 0.3, y: vp.height * 0.7 }, { x: vp.width * 0.3 + 120, y: vp.height * 0.7 - 40 });
+  await page.waitForTimeout(800);
+  const after = (await cloud(page)).pos;
+  expect(after.x).toBeGreaterThan(before.x + 10);
+  expect(after.y).toBeLessThan(before.y - 3);
+
+  // поймали 2 бабочки и яблочко
+  const sat0 = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save') ?? '{"satiety":{"value":100}}').satiety.value);
+  for (const k of ['butterfly', 'butterfly', 'apple'] as const) {
+    await (await piki(page)).evaluate((p, k) => (p.app as unknown as { scene: CloudDbg }).scene.debugSpawnAtCloud(k), k);
+    await page.waitForTimeout(150);
+  }
+  await expect.poll(async () => (await cloud(page)).caught).toBe(2);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save')!));
+  expect(saved.coins).toBe(2);
+  expect(saved.butterfliesTotal).toBe(2);
+  expect(saved.satiety.value).toBeGreaterThanOrEqual(Math.min(100, sat0)); // яблочко не уменьшает сытость
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-cloud-play.png` });
+
+  // конец раунда: итог с бабочками и кнопками
+  await (await piki(page)).evaluate((p) => (p.app as unknown as { scene: CloudDbg }).scene.debugFinish());
+  await expect.poll(async () => (await cloud(page)).phase, { timeout: 5000 }).toBe('summary');
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-cloud-summary.png` });
+  const home = await center(page, 'btn:home2');
+  await page.touchscreen.tap(home.x, home.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('home');
+});
+
+test('облачко: выйти домой можно в любой момент, пойманное засчитано', async ({ page }) => {
+  await page.goto('./?nohint');
+  await ready(page);
+  const b = await center(page, 'btn:cloud');
+  await page.touchscreen.tap(b.x, b.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('cloud');
+  await (await piki(page)).evaluate((p) => (p.app as unknown as { scene: CloudDbg }).scene.debugSpawnAtCloud('butterfly'));
+  await expect.poll(async () => (await cloud(page)).caught).toBe(1);
+  const h = await center(page, 'btn:home');
+  await page.touchscreen.tap(h.x, h.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('home');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save')!));
+  expect(saved.butterfliesTotal).toBe(1);
+});

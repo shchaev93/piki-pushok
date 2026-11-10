@@ -147,6 +147,21 @@ export class CharCanvas {
     return this;
   }
 
+  /** Эллипс с контуром: центр (cx, cy), радиусы rx, ry. */
+  disc(cx: number, cy: number, rx: number, ry: number, fill: string, outline = 'O'): this {
+    for (let y = 0; y < this.h; y++) {
+      for (let x = 0; x < this.w; x++) {
+        const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+        if (d <= 1) {
+          // контур = клетка у края эллипса (соседняя наружу клетка вне эллипса)
+          const out = (dx: number, dy: number) => Math.hypot((x + 0.5 + dx - cx) / rx, (y + 0.5 + dy - cy) / ry) > 1;
+          this.set(x, y, out(1, 0) || out(-1, 0) || out(0, 1) || out(0, -1) ? outline : fill);
+        }
+      }
+    }
+    return this;
+  }
+
   /** Вставляет другую сетку символов ('.' не перекрывает). */
   blit(rows: readonly string[], x: number, y: number): this {
     rows.forEach((row, j) => {

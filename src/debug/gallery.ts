@@ -2,6 +2,8 @@ import approvedSvg from '../../assets/pushok.svg?url';
 import { allSprites } from '../sprites';
 import { parseGrid, type Grid } from '../sprites/grid';
 import { pushokWithHat } from '../sprites/pushok';
+import { HATS, type HatId } from '../sprites/hats';
+import { GUITARS } from '../sprites/items';
 import { gridToCanvas } from '../sprites/render';
 
 // Страница #sprites: все спрайты крупно, чтобы проверить их глазами
@@ -33,7 +35,11 @@ export function showGallery(version: string) {
   cap.textContent = 'pushok.svg (утвержденный)';
   ref.append(img, cap);
   row.append(ref, tile('из сетки: база + корона', pushokWithHat('base', 'crown').grid, 10));
+  const outfits = document.createElement('section');
+  for (const h of Object.keys(HATS) as HatId[]) outfits.append(tile(`Пушок + ${h}`, pushokWithHat('base', h).grid, 5));
+  for (const g of Object.keys(GUITARS)) outfits.append(tile(`Пушок + гитара ${g}`, pushokWithHat('base', null, g).grid, 5));
+  outfits.append(tile('корона + гитара, грусть', pushokWithHat('sad', 'crown', 'gold').grid, 5));
   const all = document.createElement('section');
   for (const [name, def] of Object.entries(allSprites())) all.append(tile(name, parseGrid(def, name)));
-  document.body.append(h, row, all);
+  document.body.append(h, row, outfits, all);
 }

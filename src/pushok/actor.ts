@@ -48,6 +48,9 @@ export class Pushok {
   lift = 0;
   frame: PushokFrame = 'base';
   hat: HatId | null = null;
+  guitar: string | null = null;
+  /** Кадр «по умолчанию»: обычный или грустный (очень голодный). */
+  idleFrame: PushokFrame = 'base';
   /** Порядок отрисовки: по умолчанию по y, занятие может поставить его перед или за предметом. */
   sortY: number | null = null;
   /** Предмет, нарисованный поверх Пушка (одеяло). */
@@ -63,7 +66,8 @@ export class Pushok {
   constructor(private onHopLand: () => void = () => {}) {}
 
   get displayFrame(): PushokFrame {
-    return this.frame === 'base' && this.blinkLeft > 0 ? 'blink' : this.frame;
+    const f = this.frame === 'base' ? this.idleFrame : this.frame;
+    return f === 'base' && this.blinkLeft > 0 ? 'blink' : f;
   }
 
   /** Запускает новый сценарий, прерывая текущий (ребенок может тапать что угодно). */

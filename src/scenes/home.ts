@@ -1,9 +1,12 @@
 import { CONFIG, type ActivityId } from '../config';
 import type { Sfx } from '../audio/sfx';
 import type { Target } from '../engine/input';
+import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { during, Pushok, tween, wait, type Script } from '../pushok/actor';
 import type { Store } from '../save/store';
+import { isHatId } from '../sprites/hats';
+import type { Game, Scene } from './scene';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
 import { ICONS, type IconId } from '../sprites/icons';
 import { bitmap } from '../sprites/render';
@@ -46,8 +49,11 @@ interface Particle {
 
 type UiButton = 'cloud' | 'wardrobe' | 'basket';
 
-export class HomeScene {
+export class HomeScene implements Scene {
+  readonly id = 'home' as const;
   readonly pushok: Pushok;
+  private store: Store;
+  private sfx: Sfx;
   private particles: Particle[] = [];
   private wiggle: Partial<Record<UiButton, number>> = {};
   /** Прогресс удержания шестеренки 0..1 (рисуется кольцом). */
@@ -56,11 +62,10 @@ export class HomeScene {
   private ropeAngle: number | null = null;
   private time = 0;
 
-  constructor(
-    private store: Store,
-    private sfx: Sfx,
-    private openAdult: () => void,
-  ) {
+  constructor(private g: Game) {
+    this.store = g.store;
+    this.sfx = g.sfx;
+    const store = g.store;
     this.pushok = new Pushok(() => this.sfx.play('hop'));
     const at = HOME_OBJECTS.find((o) => o.id === store.data.home.pushokAt);
     if (at) {
@@ -68,7 +73,8 @@ export class HomeScene {
       this.pushok.y = at.rest.y;
     }
     const hat = store.data.equipped.hat;
-    this.pushok.hat = hat === 'crown' ? 'crown' : null;
+    this.pushok.hat = isHatId(hat) ? hat : null;
+    this.pushok.guitar = store.data.equipped.guitar;
   }
 
   update(dt: number) {
@@ -88,7 +94,7 @@ export class HomeScene {
 
   // ---------- касания ----------
 
-  targets(safe: { x0: number; y0: number; x1: number; y1: number }): Target[] {
+  targets(safe: Rect): Target[] {
     const list: Target[] = [];
     for (const o of HOME_OBJECTS) {
       const { w, h } = sz(o.sprite);
@@ -108,7 +114,7 @@ export class HomeScene {
         onProgress: (v) => (this.gearHold = v),
         onComplete: () => {
           this.gearHold = 0;
-          this.openAdult();
+          this.g.openAdult();
         },
       },
     });
@@ -141,7 +147,12 @@ export class HomeScene {
   }
 
   private tapButton(id: UiButton) {
-    // Облачко, гардероб и магазин появятся на этапах 2-4. Пока кнопка мягко качается.
+    if (id === 'cloud') {
+      this.sfx.play('tap');
+      this.g.go('cloud');
+      return;
+    }
+    // Гардероб и магазин появятся на этапах 3-4. Пока кнопка мягко качается.
     this.sfx.play('wiggle');
     this.wiggle[id] = 500;
   }

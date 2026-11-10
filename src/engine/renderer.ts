@@ -29,14 +29,21 @@ export class Renderer {
     this.ctx.drawImage(b.canvas, Math.round(x) - b.ox, Math.round(y) - b.oy);
   }
 
-  sprite(key: string, def: SpriteDef, x: number, y: number) {
-    this.bmp(bitmap(key, def), x, y);
+  sprite(key: string, def: SpriteDef, x: number, y: number, scale = 1) {
+    const b = bitmap(key, def);
+    if (scale === 1) this.bmp(b, x, y);
+    else this.ctx.drawImage(b.canvas, Math.round(x), Math.round(y), b.w * scale, b.h * scale);
+  }
+
+  /** Размер спрайта в пикселях. */
+  static size(def: SpriteDef) {
+    return { w: def.rows[0].length, h: def.rows.length };
   }
 
   /** Пушок рисуется от нижнего центра: так кадры разной высоты стоят на земле. */
   pushok(p: Pushok, scale = 1) {
     const frame = p.displayFrame;
-    const b = pushokBitmap(frame, p.hat);
+    const b = pushokBitmap(frame, p.hat, p.guitar);
     const bodyH = PUSHOK_FRAMES[frame].length;
     const left = Math.round(p.x) - 8 * scale;
     const top = Math.round(p.y + p.lift) - bodyH * scale;

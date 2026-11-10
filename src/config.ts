@@ -67,12 +67,25 @@ export const CONFIG = {
     dishMultiplier: 1.3,
     dishMin: 35,
     /** Особые блюда. Порядок ингредиентов не важен. Остальное = суп-сюрприз. */
-    recipes: [{ dish: 'pie', ingredients: ['apple', 'seeds'] as FoodId[] }],
+    recipes: [
+      { dish: 'pie', ingredients: ['apple', 'seeds'] as FoodId[] },
+      { dish: 'sandwich', ingredients: ['bread', 'cheese'] as FoodId[] },
+      { dish: 'salad', ingredients: ['apple', 'carrot'] as FoodId[] },
+    ],
+    /** Сколько полных кругов помешать, чтобы блюдо сварилось. */
+    stirTurns: 2,
   },
 
   cloud: {
     roundSeconds: 60,
     coinsPerButterfly: 1,
+    /** Пауза между бабочками, мс. За раунд пролетает ~18, ловится обычно 10-15. */
+    butterflyEveryMs: [2400, 3800] as [number, number],
+    butterflySpeed: [20, 30] as [number, number],
+    appleEveryMs: [9000, 14000] as [number, number],
+    appleSpeed: 16,
+    /** Насколько плавно облачко догоняет палец (больше = резче). */
+    follow: 9,
   },
 
   /** Шляпки и гитары. Порог = общее число пойманных бабочек. */

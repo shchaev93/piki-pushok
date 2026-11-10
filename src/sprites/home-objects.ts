@@ -18,6 +18,9 @@ export const FURN_PALETTE = {
   M: '#A0673C',
   E: '#2B2B3A',
   V: '#C9A6E8',
+  K: '#5E9E58', // темная зелень
+  N: '#D93A55', // вишня
+  A: '#F9C37A', // супчик
 } as const;
 
 const def = (rows: string[]): SpriteDef => ({ rows, palette: FURN_PALETTE });

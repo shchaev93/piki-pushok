@@ -1,5 +1,6 @@
 import { compose, parseGrid, patch, type Composed, type Grid, type SpriteDef } from './grid';
 import { HATS, type HatId } from './hats';
+import { GUITARS } from './items';
 
 // Палитра и базовая сетка из ТЗ, без изменений.
 export const PUSHOK_PALETTE = {
@@ -98,18 +99,26 @@ export function pushokDef(frame: PushokFrame): SpriteDef {
   return { rows: PUSHOK_FRAMES[frame], palette: PUSHOK_PALETTE };
 }
 
+/** Якорь гитары: левый край и отступ верхнего края гитары от низа тела. */
+export const GUITAR_ANCHOR = { col: 1, fromBottom: 10 } as const;
+
 /**
- * Пушок в кадре frame со шляпкой hat поверх головы.
+ * Пушок в кадре frame со шляпкой hat поверх головы и гитарой в лапках.
  * oy в результате = на сколько пикселей шляпка подняла холст над сеткой Пушка.
  */
-export function pushokWithHat(frame: PushokFrame, hat: HatId | null): Composed {
+export function pushokWithHat(frame: PushokFrame, hat: HatId | null, guitar: string | null = null): Composed {
   const body: Grid = parseGrid(pushokDef(frame), `pushok.${frame}`);
-  if (!hat) return { grid: body, ox: 0, oy: 0 };
-  const hatGrid = parseGrid(HATS[hat], `hat.${hat}`);
-  // Кадры с убранными или добавленными рядами меняют высоту, но голова
-  // (строки 0-9) остается на своих индексах, поэтому якорь общий.
-  return compose([
-    { grid: body, x: 0, y: 0 },
-    { grid: hatGrid, x: HAT_ANCHOR.col, y: HAT_ANCHOR.bottomRow - (hatGrid.h - 1) },
-  ]);
+  const layers = [{ grid: body, x: 0, y: 0 }];
+  if (hat) {
+    const hatGrid = parseGrid(HATS[hat], `hat.${hat}`);
+    // Кадры с убранными или добавленными рядами меняют высоту, но голова
+    // (строки 0-9) остается на своих индексах, поэтому якорь общий.
+    layers.push({ grid: hatGrid, x: HAT_ANCHOR.col, y: HAT_ANCHOR.bottomRow - (hatGrid.h - 1) });
+  }
+  if (guitar && GUITARS[guitar]) {
+    const g = parseGrid(GUITARS[guitar], `guitar.${guitar}`);
+    // Гитара привязана к низу тела: так она не съезжает в кадрах прыжка.
+    layers.push({ grid: g, x: GUITAR_ANCHOR.col, y: body.h - GUITAR_ANCHOR.fromBottom });
+  }
+  return layers.length === 1 ? { grid: body, ox: 0, oy: 0 } : compose(layers);
 }
