@@ -33,8 +33,12 @@ function lockGestures() {
 async function start() {
   lockGestures();
   const store = createStore(storage());
+  Sfx.usePlaybackSession();
   const sfx = new Sfx();
   sfx.enabled = store.data.settings.sound;
+  for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click'] as const) {
+    addEventListener(ev, () => sfx.unlock(), { capture: true, passive: true });
+  }
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const probe = document.getElementById('safe-probe')!;
   const app = new App(canvas, probe, store, sfx, __APP_VERSION__);

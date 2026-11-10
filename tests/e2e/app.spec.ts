@@ -56,7 +56,7 @@ test('все цели касания не меньше 64 CSS px', async ({ page
   await page.goto('./?nohint');
   await ready(page);
   const sizes = await (await piki(page)).evaluate((p) => p.app.targetSizesCss());
-  expect(sizes.length).toBeGreaterThanOrEqual(13);
+  expect(sizes.length).toBeGreaterThanOrEqual(14);
   for (const s of sizes) {
     expect(s.w, s.id).toBeGreaterThanOrEqual(64);
     expect(s.h, s.id).toBeGreaterThanOrEqual(64);
@@ -66,7 +66,7 @@ test('все цели касания не меньше 64 CSS px', async ({ page
 test('тап по каждому предмету запускает занятие (скриншоты в процессе)', async ({ page }, info) => {
   await page.goto('./?nohint');
   await ready(page);
-  const ids = ['bed', 'climber', 'bath', 'kitchen', 'trampoline', 'table', 'slide', 'rope'];
+  const ids = ['bed', 'climber', 'bath', 'toilet', 'kitchen', 'trampoline', 'table', 'slide', 'rope'];
   for (const id of ids) {
     const c = await center(page, `obj:${id}`);
     await page.touchscreen.tap(c.x, c.y);

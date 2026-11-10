@@ -28,6 +28,7 @@ export const CONFIG = {
     bed: 4000,
     table: 3000,
     bath: 3500,
+    toilet: 2800,
     trampoline: 3200,
     slide: 3200,
     climber: 3600,

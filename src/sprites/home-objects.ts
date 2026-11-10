@@ -57,8 +57,7 @@ function table(): string[] {
 }
 
 function bath(): string[] {
-  const c = new CharCanvas(38, 16);
-  // ванна
+  const c = new CharCanvas(26, 16);
   c.box(21, 0, 3, 4, 'S'); // кран
   c.box(0, 4, 26, 3, 'W'); // бортик
   c.rect(1, 5, 24, 1, 'L');
@@ -66,11 +65,16 @@ function bath(): string[] {
   c.rect(2, 9, 22, 1, 'C');
   c.box(3, 12, 4, 4, 'Y');
   c.box(19, 12, 4, 4, 'Y');
-  // туалет
-  c.box(28, 1, 8, 6, 'C'); // бачок
-  c.box(27, 6, 11, 3, 'W'); // сиденье
-  c.box(29, 8, 7, 5, 'W');
-  c.box(28, 12, 9, 4, 'W');
+  return c.rows();
+}
+
+function toilet(): string[] {
+  const c = new CharCanvas(11, 16);
+  c.box(1, 1, 8, 6, 'C'); // бачок
+  c.box(6, 2, 2, 2, 'S'); // кнопка смыва
+  c.box(0, 6, 11, 3, 'W'); // сиденье
+  c.box(2, 8, 7, 5, 'W');
+  c.box(1, 12, 9, 4, 'W');
   return c.rows();
 }
 
@@ -151,6 +155,7 @@ export const HOME_SPRITES = {
   bedBlanket: def(bedBlanket()),
   table: def(table()),
   bath: def(bath()),
+  toilet: def(toilet()),
   trampoline: def(trampoline()),
   slide: def(slide()),
   climber: def(climber()),

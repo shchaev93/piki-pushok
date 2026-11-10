@@ -23,7 +23,8 @@ const sz = (s: HomeSpriteId) => ({ w: HOME_SPRITES[s].rows[0].length, h: HOME_SP
 export const HOME_OBJECTS: HomeObject[] = [
   { id: 'bed', sprite: 'bed', x: 4, y: 50, rest: { x: 19, y: 76 } },
   { id: 'climber', sprite: 'climber', x: 40, y: 22, rest: { x: 53, y: 76 } },
-  { id: 'bath', sprite: 'bath', x: 110, y: 48, rest: { x: 122, y: 76 } },
+  { id: 'bath', sprite: 'bath', x: 108, y: 48, rest: { x: 121, y: 76 } },
+  { id: 'toilet', sprite: 'toilet', x: 137, y: 48, rest: { x: 142, y: 76 } },
   { id: 'kitchen', sprite: 'kitchen', x: 154, y: 30, rest: { x: 171, y: 76 } },
   { id: 'trampoline', sprite: 'trampoline', x: 6, y: 88, rest: { x: 21, y: 88 } },
   { id: 'table', sprite: 'table', x: 52, y: 84, rest: { x: 64, y: 90 } },
@@ -199,7 +200,7 @@ export class HomeScene {
       case 'bath': {
         yield* p.hopTo(o.rest.x, o.rest.y);
         p.sortY = 63.9; // за бортиком ванны
-        yield* p.jumpTo(122, 58, 12);
+        yield* p.jumpTo(121, 58, 12);
         sfx.play('splash');
         let b = 0;
         yield* during(ms, (t) => {
@@ -207,13 +208,35 @@ export class HomeScene {
           p.frame = Math.floor(t / 600) % 2 ? 'happy1' : 'base';
           if (t > b) {
             b += 260;
-            this.spawn('bubble', 112 + Math.random() * 22, 50, (Math.random() - 0.5) * 8, -12 - Math.random() * 8, 1200);
+            this.spawn('bubble', 110 + Math.random() * 22, 50, (Math.random() - 0.5) * 8, -12 - Math.random() * 8, 1200);
           }
           if (Math.floor(t / 1100) !== Math.floor((t - 16) / 1100)) sfx.play('splash');
         });
         p.lift = 0;
         yield* p.jumpTo(o.rest.x, o.rest.y, 12);
         p.sortY = null;
+        break;
+      }
+      case 'toilet': {
+        yield* p.hopTo(o.rest.x, o.rest.y);
+        p.sortY = 64.1;
+        yield* p.jumpTo(142, 55, 8);
+        // сидит с закрытыми глазами и чуть ерзает
+        yield* during(ms * 0.45, (t) => {
+          p.frame = 'meditate';
+          p.lift = Math.floor(t / 250) % 2 ? -1 : 0;
+        });
+        p.lift = 0;
+        sfx.play('flush');
+        p.frame = 'happy1';
+        for (let i = 0; i < 6; i++) {
+          this.spawn('bubble', 138 + Math.random() * 6, 56, (Math.random() - 0.5) * 16, -14 - Math.random() * 10, 900);
+        }
+        yield* during(ms * 0.3, (t) => (p.frame = Math.floor(t / 200) % 2 ? 'happy2' : 'happy1'));
+        yield* p.jumpTo(o.rest.x, o.rest.y, 8);
+        p.sortY = null;
+        sfx.play('joy');
+        yield* p.joy(1, 3);
         break;
       }
       case 'trampoline': {

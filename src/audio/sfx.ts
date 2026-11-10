@@ -14,6 +14,7 @@ export type SoundId =
   | 'sniff'
   | 'wiggle'
   | 'joy'
+  | 'flush'
   | 'hold';
 
 type Ctx = AudioContext;
@@ -24,8 +25,25 @@ export class Sfx {
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
 
-  /** Вызывать из pointerdown: создает и будит AudioContext. */
+  /**
+   * Режим «как у плеера»: на iPhone звук играет и в бесшумном режиме
+   * (Safari 17+). Громкость кнопками сбоку, выключение в панели взрослых.
+   */
+  static usePlaybackSession() {
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    try {
+      if (nav.audioSession) nav.audioSession.type = 'playback';
+    } catch {
+      /* старый Safari: звук подчиняется бесшумному режиму */
+    }
+  }
+
+  /**
+   * Вызывать из обработчиков касания (и при нажатии, и при отпускании:
+   * iOS разрешает звук не на всех событиях). Создает и будит AudioContext.
+   */
   unlock() {
+    if (this.ctx && this.ctx.state === 'running') return;
     if (!this.ctx) {
       const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return;
@@ -38,7 +56,13 @@ export class Sfx {
       const d = this.noise.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    // Старый прием для iOS: беззвучный буфер внутри жеста окончательно «будит» звук.
+    const silent = this.ctx.createBufferSource();
+    silent.buffer = this.ctx.createBuffer(1, 1, 22050);
+    silent.connect(this.ctx.destination);
+    silent.start(0);
+    // suspended или interrupted (после сворачивания на iOS)
+    void this.ctx.resume().catch(() => {});
   }
 
   /** При сворачивании приложения звук усыпляем, чтобы не тратить батарею. */
@@ -88,6 +112,10 @@ export class Sfx {
         break;
       case 'joy':
         [523, 659, 784].forEach((f, i) => this.tone(f, t + i * 0.08, 0.12, 'sine', 0.4));
+        break;
+      case 'flush':
+        this.hiss(t, 0.9, 700, 0.45);
+        this.tone(700, t, 0.7, 'sine', 0.25, 180);
         break;
       case 'hold':
         this.tone(330, t, 0.05, 'sine', 0.15);
