@@ -335,3 +335,41 @@ test('сытый Пушок вежливо отказывается, еда ос
   const refusals = await (await piki(page)).evaluate((p) => (p.app as unknown as { scene: { refusals: number } }).scene.refusals);
   expect(refusals).toBe(1);
 });
+
+// ---------- этап 4: гардероб ----------
+
+test('гардероб: надеть и снять шляпку, надеть гитару, закрытое не надевается', async ({ page }, info) => {
+  await withSave(page, { butterfliesTotal: 30, unlocked: { hats: ['crown', 'bow'], guitars: ['pink'] } });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-home-new-unlocks.png` });
+  const w = await center(page, 'btn:wardrobe');
+  await page.touchscreen.tap(w.x, w.y);
+  await expect.poll(() => sceneId(page)).toBe('wardrobe');
+  expect((await save(page)).seen.sort()).toEqual(['guitar:pink', 'hat:bow', 'hat:crown']);
+
+  const tap = async (id: string) => {
+    const c = await center(page, id);
+    await page.touchscreen.tap(c.x, c.y);
+    await page.waitForTimeout(150);
+  };
+  await tap('hat:bow');
+  expect((await save(page)).equipped.hat).toBe('bow');
+  await tap('hat:crown');
+  expect((await save(page)).equipped.hat).toBe('crown');
+  await tap('guitar:pink');
+  expect((await save(page)).equipped.guitar).toBe('pink');
+  await tap('hat:wreath'); // закрыто (50 бабочек)
+  expect((await save(page)).equipped.hat).toBe('crown');
+  await tap('guitar:blue'); // закрыто (70)
+  expect((await save(page)).equipped.guitar).toBe('pink');
+  await tap('pushok'); // мелодия
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-wardrobe.png` });
+  await tap('hat:crown'); // повторный тап снимает
+  expect((await save(page)).equipped.hat).toBeNull();
+
+  // в домике Пушок в гитаре
+  await tap('btn:home');
+  await expect.poll(() => sceneId(page)).toBe('home');
+  expect((await save(page)).equipped.guitar).toBe('pink');
+});

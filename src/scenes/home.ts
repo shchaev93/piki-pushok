@@ -166,14 +166,8 @@ export class HomeScene implements Scene {
   }
 
   private tapButton(id: UiButton) {
-    if (id === 'cloud' || id === 'basket') {
-      this.sfx.play('tap');
-      this.g.go(id === 'cloud' ? 'cloud' : 'shop');
-      return;
-    }
-    // Гардероб появится на этапе 4. Пока кнопка мягко качается.
-    this.sfx.play('wiggle');
-    this.wiggle[id] = 500;
+    this.sfx.play('tap');
+    this.g.go(id === 'cloud' ? 'cloud' : id === 'basket' ? 'shop' : 'wardrobe');
   }
 
   private *playGuitar(): Script {

@@ -83,6 +83,13 @@ export function recolor(def: SpriteDef, changes: Record<string, string>): Sprite
   return { rows: def.rows, palette: { ...def.palette, ...changes } };
 }
 
+/** Силуэт: все непрозрачные пиксели одного цвета (закрытая вещь в гардеробе). */
+export function silhouette(def: SpriteDef, color: string): SpriteDef {
+  const palette: Record<string, string> = {};
+  for (const k of Object.keys(def.palette)) palette[k] = color;
+  return { rows: def.rows, palette };
+}
+
 /** Заменяет кусок строки сетки, начиная с колонки col. */
 export function patch(rows: readonly string[], row: number, col: number, text: string): string[] {
   const out = [...rows];

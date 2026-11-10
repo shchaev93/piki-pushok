@@ -7,6 +7,7 @@ import type { PersistState, Store } from './save/store';
 import { CloudScene } from './scenes/cloud';
 import { FeedScene } from './scenes/feed';
 import { ShopScene } from './scenes/shop';
+import { WardrobeScene } from './scenes/wardrobe';
 import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
@@ -77,6 +78,8 @@ export class App {
         return new ShopScene(this.game);
       case 'feed':
         return new FeedScene(this.game);
+      case 'wardrobe':
+        return new WardrobeScene(this.game);
       default:
         return new HomeScene(this.game);
     }

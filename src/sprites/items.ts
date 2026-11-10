@@ -236,23 +236,17 @@ export const ITEM_ICONS = {
 
 // ---------- гитары ----------
 
+/** Гитара поперек животика: корпус слева, гриф вправо. B = цвет гитары. */
 function guitar(): string[] {
-  const c = new CharCanvas(16, 10);
-  // гриф к правому верхнему углу
-  for (let t = 0; t <= 7; t++) {
-    const x = 7 + t;
-    const y = 5 - Math.floor(t / 2);
-    c.set(x, y - 1, 'O').set(x, y, 'D').set(x, y + 1, 'O');
-  }
-  c.box(13, 0, 3, 3, 'D');
-  // корпус «восьмеркой»
-  c.disc(4.5, 6, 4.4, 3.8, 'B');
-  c.disc(7.5, 5.5, 2.6, 2.6, 'B');
-  c.set(5, 5, 'E').set(5, 6, 'E').set(6, 5, 'E').set(6, 6, 'E');
-  // лапки, которые держат гитару
-  c.blit(['OOO', 'OWO', 'OOO'], 0, 7);
-  c.blit(['OOO', 'OWO', 'OOO'], 9, 3);
-  return c.rows();
+  return [
+    '.OOOO..........',
+    'OBBBBO.......OO',
+    'OBBEBBOOOOOOODO',
+    'OBBEBBDDDDDDDDO',
+    'OBBBBBOOOOOOOOO',
+    'OBBBBO.........',
+    '.OOOO..........',
+  ];
 }
 const GUITAR_BASE = def(guitar());
 export const GUITARS: Record<string, SpriteDef> = {

@@ -100,7 +100,7 @@ export function pushokDef(frame: PushokFrame): SpriteDef {
 }
 
 /** Якорь гитары: левый край и отступ верхнего края гитары от низа тела. */
-export const GUITAR_ANCHOR = { col: 1, fromBottom: 10 } as const;
+export const GUITAR_ANCHOR = { col: 1, fromBottom: 8 } as const;
 
 /**
  * Пушок в кадре frame со шляпкой hat поверх головы и гитарой в лапках.
