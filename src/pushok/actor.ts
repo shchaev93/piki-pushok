@@ -49,6 +49,7 @@ export class Pushok {
   frame: PushokFrame = 'base';
   hat: HatId | null = null;
   guitar: string | null = null;
+  sweater: string | null = null;
   /** Кадр «по умолчанию»: обычный или грустный (очень голодный). */
   idleFrame: PushokFrame = 'base';
   /** Порядок отрисовки: по умолчанию по y, занятие может поставить его перед или за предметом. */

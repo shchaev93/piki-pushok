@@ -4,6 +4,7 @@ import { HOME_SPRITES, SMALL_SPRITES } from './home-objects';
 import { ICONS } from './icons';
 import { BIG_CLOUD, BUTTERFLY_FOLDED, BUTTERFLY_OPEN, DISH_SPRITES, FOOD_SPRITES, GUITARS, ITEM_ICONS, MUSIC_SPRITES } from './items';
 import { PUSHOK_FRAMES, pushokDef, type PushokFrame } from './pushok';
+import { SWEATER_ICONS, SWEATERS } from './sweaters';
 
 /** Все спрайты игры по именам: для тестов и страницы #sprites. */
 export function allSprites(): Record<string, SpriteDef> {
@@ -14,6 +15,8 @@ export function allSprites(): Record<string, SpriteDef> {
   for (const f of Object.keys(PUSHOK_FRAMES) as PushokFrame[]) out[`pushok.${f}`] = pushokDef(f);
   add('hat', HATS);
   add('guitar', GUITARS);
+  add('sweater', SWEATERS);
+  add('sweaterIcon', SWEATER_ICONS);
   add('home', HOME_SPRITES);
   add('small', SMALL_SPRITES);
   add('icon', ICONS);

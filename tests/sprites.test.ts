@@ -68,6 +68,25 @@ describe('Пушок совпадает с утвержденным pushok.svg',
   });
 });
 
+describe('Кофточки на Пушке', () => {
+  it('ни в одном кадре кофточка не закрывает мордочку (строки 0-9) и не меняет размер', async () => {
+    const { SWEATERS } = await import('../src/sprites/sweaters');
+    for (const frame of Object.keys(PUSHOK_FRAMES) as (keyof typeof PUSHOK_FRAMES)[]) {
+      const plain = pushokWithHat(frame, 'crown', 'pink');
+      for (const sw of Object.keys(SWEATERS)) {
+        const dressed = pushokWithHat(frame, 'crown', 'pink', sw);
+        expect(dressed.grid.h, `${frame}+${sw}`).toBe(plain.grid.h);
+        expect(dressed.grid.w).toBe(plain.grid.w);
+        for (let y = 0; y < 10 + plain.oy; y++) {
+          for (let x = 0; x < plain.grid.w; x++) {
+            expect(pixelAt(dressed.grid, x, y), `${frame}+${sw} (${x},${y})`).toBe(pixelAt(plain.grid, x, y));
+          }
+        }
+      }
+    }
+  });
+});
+
 describe('Все спрайты корректны', () => {
   const sprites = allSprites();
   it.each(Object.keys(sprites))('%s: строки одной длины, все символы есть в палитре', (name) => {

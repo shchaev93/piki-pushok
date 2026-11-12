@@ -1,9 +1,9 @@
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
+import { dress } from '../pushok/dress';
 import { during, Pushok, type Script } from '../pushok/actor';
-import { isHatId } from '../sprites/hats';
-import { GUITARS, MUSIC_SPRITES } from '../sprites/items';
+import { MUSIC_SPRITES } from '../sprites/items';
 import { Particles } from './particles';
 import type { Game, Scene } from './scene';
 import { BTN, drawHomeButton, homeButton } from './ui';
@@ -53,8 +53,7 @@ export class MusicScene implements Scene {
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
-    this.pushok.guitar = s.equipped.guitar && GUITARS[s.equipped.guitar] ? s.equipped.guitar : null;
+    dress(this.pushok, s);
     this.pushok.x = HOME_X;
     this.pushok.y = STAGE_Y;
   }

@@ -1,6 +1,7 @@
 import { compose, parseGrid, patch, type Composed, type Grid, type SpriteDef } from './grid';
 import { HATS, type HatId } from './hats';
 import { GUITARS } from './items';
+import { SWEATER_ROWS, SWEATERS } from './sweaters';
 
 // Палитра и базовая сетка из ТЗ, без изменений.
 export const PUSHOK_PALETTE = {
@@ -106,19 +107,36 @@ export const GUITAR_ANCHOR = { col: 1, fromBottom: 8 } as const;
  * Пушок в кадре frame со шляпкой hat поверх головы и гитарой в лапках.
  * oy в результате = на сколько пикселей шляпка подняла холст над сеткой Пушка.
  */
-export function pushokWithHat(frame: PushokFrame, hat: HatId | null, guitar: string | null = null): Composed {
+export function pushokWithHat(
+  frame: PushokFrame,
+  hat: HatId | null,
+  guitar: string | null = null,
+  sweater: string | null = null,
+): Composed {
   const body: Grid = parseGrid(pushokDef(frame), `pushok.${frame}`);
   const layers = [{ grid: body, x: 0, y: 0 }];
-  if (hat) {
-    const hatGrid = parseGrid(HATS[hat], `hat.${hat}`);
-    // Кадры с убранными или добавленными рядами меняют высоту, но голова
-    // (строки 0-9) остается на своих индексах, поэтому якорь общий.
-    layers.push({ grid: hatGrid, x: HAT_ANCHOR.col, y: HAT_ANCHOR.bottomRow - (hatGrid.h - 1) });
+  if (sweater && SWEATERS[sweater]) {
+    // Кофточка привязана к низу тела и не поднимается выше строки 10 (там рот).
+    // В сжатых кадрах (прыжок, грусть) она на строку короче.
+    const d = SWEATERS[sweater];
+    const top = body.h - SWEATER_ROWS;
+    const drop = Math.max(0, SWEATER_TOP_MIN - top);
+    const rows = drop ? [d.rows[0], ...d.rows.slice(1 + drop)] : d.rows;
+    layers.push({ grid: parseGrid({ rows, palette: d.palette }, `sweater.${sweater}`), x: 0, y: top + drop });
   }
   if (guitar && GUITARS[guitar]) {
     const g = parseGrid(GUITARS[guitar], `guitar.${guitar}`);
     // Гитара привязана к низу тела: так она не съезжает в кадрах прыжка.
     layers.push({ grid: g, x: GUITAR_ANCHOR.col, y: body.h - GUITAR_ANCHOR.fromBottom });
   }
+  if (hat) {
+    const hatGrid = parseGrid(HATS[hat], `hat.${hat}`);
+    // Кадры с убранными или добавленными рядами меняют высоту, но голова
+    // (строки 0-9) остается на своих индексах, поэтому якорь общий.
+    layers.push({ grid: hatGrid, x: HAT_ANCHOR.col, y: HAT_ANCHOR.bottomRow - (hatGrid.h - 1) });
+  }
   return layers.length === 1 ? { grid: body, ox: 0, oy: 0 } : compose(layers);
 }
+
+/** Верх кофточки не выше этой строки базовой сетки (строка 9 = рот). */
+export const SWEATER_TOP_MIN = 10;

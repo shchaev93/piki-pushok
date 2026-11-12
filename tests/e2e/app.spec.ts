@@ -297,8 +297,8 @@ async function withSave(page: Page, patch: Record<string, unknown>) {
     delete p.satietyValue;
     const base = {
       version: 2, createdAt: now, coins: 0, butterfliesTotal: 0, satiety: { value, at: now },
-      basket: {}, dishes: [], unlocked: { hats: [], guitars: [] }, seen: [],
-      equipped: { hat: null, guitar: null }, settings: { sound: true }, home: { pushokAt: null, sleeping: false }, night: null,
+      basket: {}, dishes: [], unlocked: { hats: [], guitars: [], sweaters: [] }, seen: [],
+      equipped: { hat: null, guitar: null, sweater: null }, settings: { sound: true }, home: { pushokAt: null, sleeping: false }, night: null,
     };
     if (typeof p.nightInMs === 'number') {
       (base as Record<string, unknown>).night = now + (p.nightInMs as number);
@@ -366,13 +366,13 @@ test('сытый Пушок вежливо отказывается, еда ос
 // ---------- этап 4: гардероб ----------
 
 test('гардероб: надеть и снять шляпку, надеть гитару, закрытое не надевается', async ({ page }, info) => {
-  await withSave(page, { butterfliesTotal: 30, unlocked: { hats: ['crown', 'bow'], guitars: ['pink'] } });
+  await withSave(page, { butterfliesTotal: 30, unlocked: { hats: ['crown', 'bow'], guitars: ['pink'], sweaters: ['heart', 'stripes'] } });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-home-new-unlocks.png` });
   const w = await center(page, 'btn:wardrobe');
   await page.touchscreen.tap(w.x, w.y);
   await expect.poll(() => sceneId(page)).toBe('wardrobe');
-  expect((await save(page)).seen.sort()).toEqual(['guitar:pink', 'hat:bow', 'hat:crown']);
+  expect((await save(page)).seen.sort()).toEqual(['guitar:pink', 'hat:bow', 'hat:crown', 'sweater:heart', 'sweater:stripes']);
 
   const tap = async (id: string) => {
     const c = await center(page, id);
@@ -387,6 +387,13 @@ test('гардероб: надеть и снять шляпку, надеть г
   expect((await save(page)).equipped.hat).toBe('crown');
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-wardrobe-hats.png` });
+  await tap('tab:sweater');
+  await tap('sweater:stripes');
+  expect((await save(page)).equipped.sweater).toBe('stripes');
+  await tap('sweater:dots'); // закрыта (60)
+  expect((await save(page)).equipped.sweater).toBe('stripes');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-wardrobe-sweaters.png` });
   await tap('tab:guitar');
   await tap('guitar:pink');
   expect((await save(page)).equipped.guitar).toBe('pink');
@@ -403,6 +410,9 @@ test('гардероб: надеть и снять шляпку, надеть г
   await tap('btn:home');
   await expect.poll(() => sceneId(page)).toBe('home');
   expect((await save(page)).equipped.guitar).toBe('pink');
+  expect((await save(page)).equipped.sweater).toBe('stripes');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-home-dressed.png` });
 });
 
 // ---------- этап 5: кухня ----------

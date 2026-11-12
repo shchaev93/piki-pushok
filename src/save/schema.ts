@@ -21,10 +21,10 @@ export interface SaveV2 {
   basket: Partial<Record<FoodId, number>>;
   /** Приготовленные блюда в корзинке. */
   dishes: Dish[];
-  unlocked: { hats: string[]; guitars: string[] };
-  /** Открытые вещи, которые ребенок уже видел в гардеробе ('hat:bow', 'guitar:pink'). */
+  unlocked: { hats: string[]; guitars: string[]; sweaters: string[] };
+  /** Открытые вещи, которые ребенок уже видел в гардеробе ('hat:bow', 'guitar:pink', 'sweater:heart'). */
   seen: string[];
-  equipped: { hat: string | null; guitar: string | null };
+  equipped: { hat: string | null; guitar: string | null; sweater: string | null };
   settings: { sound: boolean };
   /** Пушок спит в кроватке ночью (до тапа по нему или до утра). */
   home: { pushokAt: string | null; sleeping: boolean };
@@ -43,9 +43,9 @@ export function defaultSave(now: number): Save {
     satiety: { value: CONFIG.hunger.max, at: now },
     basket: {},
     dishes: [],
-    unlocked: { hats: [], guitars: [] },
+    unlocked: { hats: [], guitars: [], sweaters: [] },
     seen: [],
-    equipped: { hat: null, guitar: null },
+    equipped: { hat: null, guitar: null, sweater: null },
     settings: { sound: true },
     home: { pushokAt: null, sleeping: false },
     night: null,
@@ -99,9 +99,9 @@ export function sanitize(raw: Record<string, unknown>, now: number): Save {
     },
     basket: basketOf(raw.basket),
     dishes: dishesOf(raw.dishes),
-    unlocked: { hats: strArr(unl.hats), guitars: strArr(unl.guitars) },
+    unlocked: { hats: strArr(unl.hats), guitars: strArr(unl.guitars), sweaters: strArr(unl.sweaters) },
     seen: strArr(raw.seen),
-    equipped: { hat: strOrNull(eq.hat), guitar: strOrNull(eq.guitar) },
+    equipped: { hat: strOrNull(eq.hat), guitar: strOrNull(eq.guitar), sweater: strOrNull(eq.sweater) },
     settings: { sound: typeof st.sound === 'boolean' ? st.sound : true },
     home: { pushokAt: strOrNull(home.pushokAt), sleeping: home.sleeping === true },
     night: typeof raw.night === 'number' && Number.isFinite(raw.night) ? raw.night : null,

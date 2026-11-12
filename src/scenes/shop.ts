@@ -3,8 +3,8 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { buy, canBuy } from '../game/rules';
+import { dress } from '../pushok/dress';
 import { Pushok } from '../pushok/actor';
-import { isHatId } from '../sprites/hats';
 import { DISH_SPRITES, FOOD_SPRITES, ITEM_ICONS } from '../sprites/items';
 import type { SpriteDef } from '../sprites/grid';
 import { Particles } from './particles';
@@ -47,8 +47,7 @@ export class ShopScene implements Scene {
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
-    this.pushok.guitar = s.equipped.guitar;
+    dress(this.pushok, s);
     this.pushok.x = 176;
     this.pushok.y = 104;
   }

@@ -3,9 +3,9 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { feed, isFull, moodOf, satietyNow, takeFood } from '../game/rules';
+import { dress } from '../pushok/dress';
 import { Pushok, type Script } from '../pushok/actor';
 import type { SpriteDef } from '../sprites/grid';
-import { isHatId } from '../sprites/hats';
 import { ICONS } from '../sprites/icons';
 import { DISH_SPRITES, FOOD_SPRITES, ITEM_ICONS } from '../sprites/items';
 import { Particles } from './particles';
@@ -43,8 +43,7 @@ export class FeedScene implements Scene {
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
-    this.pushok.guitar = null; // за едой гитару откладывает
+    dress(this.pushok, s, false); // за едой гитару откладывает
     this.pushok.x = 96;
     this.pushok.y = TABLE_Y + 6;
   }

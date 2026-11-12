@@ -117,6 +117,16 @@ export const CONFIG = {
     { id: 'heart', unlockAt: 200, approved: false },
     { id: 'rainbow', unlockAt: 250, approved: false },
   ],
+  /** Кофточки: розовая с сердечком, голубая в полоску, желтая в горошек,
+   *  зеленая со звездочкой, сиреневая с зигзагом, радужная. */
+  sweaters: [
+    { id: 'heart', unlockAt: 8 },
+    { id: 'stripes', unlockAt: 30 },
+    { id: 'dots', unlockAt: 60 },
+    { id: 'star', unlockAt: 100 },
+    { id: 'zigzag', unlockAt: 150 },
+    { id: 'rainbow', unlockAt: 220 },
+  ],
   guitars: [
     { id: 'pink', unlockAt: 15 },
     { id: 'green', unlockAt: 40 },

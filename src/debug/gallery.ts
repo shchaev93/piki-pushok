@@ -4,6 +4,7 @@ import { parseGrid, type Grid } from '../sprites/grid';
 import { pushokWithHat } from '../sprites/pushok';
 import { HATS, type HatId } from '../sprites/hats';
 import { GUITARS } from '../sprites/items';
+import { SWEATERS } from '../sprites/sweaters';
 import { gridToCanvas } from '../sprites/render';
 
 // Страница #sprites: все спрайты крупно, чтобы проверить их глазами
@@ -38,7 +39,11 @@ export function showGallery(version: string) {
   const outfits = document.createElement('section');
   for (const h of Object.keys(HATS) as HatId[]) outfits.append(tile(`Пушок + ${h}`, pushokWithHat('base', h).grid, 5));
   for (const g of Object.keys(GUITARS)) outfits.append(tile(`Пушок + гитара ${g}`, pushokWithHat('base', null, g).grid, 5));
+  for (const sw of Object.keys(SWEATERS)) outfits.append(tile(`Пушок + кофточка ${sw}`, pushokWithHat('base', null, null, sw).grid, 5));
   outfits.append(tile('корона + гитара, грусть', pushokWithHat('sad', 'crown', 'gold').grid, 5));
+  outfits.append(tile('все вместе, прыжок', pushokWithHat('hopSquash', 'bow', 'blue', 'stripes').grid, 5));
+  outfits.append(tile('кофточка, грусть', pushokWithHat('sad', null, null, 'heart').grid, 5));
+  outfits.append(tile('кофточка, ест', pushokWithHat('eatOpen', null, null, 'dots').grid, 5));
   const all = document.createElement('section');
   for (const [name, def] of Object.entries(allSprites())) all.append(tile(name, parseGrid(def, name)));
   document.body.append(h, row, outfits, all);

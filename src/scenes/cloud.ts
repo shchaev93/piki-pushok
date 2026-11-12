@@ -3,12 +3,14 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { catchButterfly, feed, startNight, type Unlock } from '../game/rules';
+import { dress } from '../pushok/dress';
 import { Pushok } from '../pushok/actor';
 import { CharCanvas, type SpriteDef } from '../sprites/grid';
 import { isHatId, HATS } from '../sprites/hats';
 import { FURN_PALETTE } from '../sprites/home-objects';
 import { ICONS } from '../sprites/icons';
 import { BIG_CLOUD, BUTTERFLY_COLORS, butterfly, FOOD_SPRITES, GUITARS, ITEM_ICONS } from '../sprites/items';
+import { SWEATER_ICONS } from '../sprites/sweaters';
 import { Particles } from './particles';
 import type { Game, Scene } from './scene';
 import { BTN, drawButton, drawHomeButton, homeButton } from './ui';
@@ -125,7 +127,7 @@ export class CloudScene implements Scene {
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
+    dress(this.pushok, s, false);
     this.pushok.frame = 'meditate';
   }
 
@@ -453,7 +455,7 @@ export class CloudScene implements Scene {
     if (this.fresh.length && this.phaseT > 600) {
       let x = this.cx + 24;
       for (const u of this.fresh.slice(0, 3)) {
-        const d = u.kind === 'hat' && isHatId(u.id) ? HATS[u.id] : GUITARS[u.id];
+        const d = u.kind === 'hat' && isHatId(u.id) ? HATS[u.id] : u.kind === 'sweater' ? SWEATER_ICONS[u.id] : GUITARS[u.id];
         if (!d) continue;
         const bob = Math.round(Math.sin(this.phaseT / 200) * 1.5);
         r.sprite(`${u.kind}.${u.id}`, d, x, this.cy - 22 + bob, 2);

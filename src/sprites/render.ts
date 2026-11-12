@@ -43,11 +43,16 @@ export function bitmap(key: string, def: SpriteDef): Bitmap {
   return b;
 }
 
-export function pushokBitmap(frame: PushokFrame, hat: HatId | null, guitar: string | null = null): Bitmap {
-  const key = `pushok:${frame}:${hat ?? '-'}:${guitar ?? '-'}`;
+export function pushokBitmap(
+  frame: PushokFrame,
+  hat: HatId | null,
+  guitar: string | null = null,
+  sweater: string | null = null,
+): Bitmap {
+  const key = `pushok:${frame}:${hat ?? '-'}:${guitar ?? '-'}:${sweater ?? '-'}`;
   let b = cache.get(key);
   if (!b) {
-    const c = pushokWithHat(frame, hat, guitar);
+    const c = pushokWithHat(frame, hat, guitar, sweater);
     b = { canvas: gridToCanvas(c.grid), w: c.grid.w, h: c.grid.h, ox: c.ox, oy: c.oy };
     cache.set(key, b);
   }

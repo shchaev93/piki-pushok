@@ -3,9 +3,9 @@ import type { Sfx } from '../audio/sfx';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
+import { dress } from '../pushok/dress';
 import { during, Pushok, tween, wait, type Script } from '../pushok/actor';
 import type { Store } from '../save/store';
-import { isHatId } from '../sprites/hats';
 import type { Game, Scene } from './scene';
 import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
 import { ITEM_ICONS, MUSIC_SPRITES } from '../sprites/items';
@@ -76,9 +76,7 @@ export class HomeScene implements Scene {
       this.pushok.x = at.rest.x;
       this.pushok.y = at.rest.y;
     }
-    const hat = store.data.equipped.hat;
-    this.pushok.hat = isHatId(hat) ? hat : null;
-    this.pushok.guitar = store.data.equipped.guitar;
+    dress(this.pushok, store.data);
 
     // день или ночь: если ночь прошла, пока игра была закрыта, наступило утро
     const night = isNight(store.data, g.now());

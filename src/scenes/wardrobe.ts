@@ -3,6 +3,9 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { Pushok, during, type Script } from '../pushok/actor';
+import { dress } from '../pushok/dress';
+import { equippedOf, toggleWear, unlockedOf, WEAR_KINDS, type WearKind } from '../game/rules';
+import { SWEATER_ICONS } from '../sprites/sweaters';
 import { scaleDef, silhouette, type SpriteDef } from '../sprites/grid';
 import { HATS, isHatId } from '../sprites/hats';
 import { SMALL_SPRITES } from '../sprites/home-objects';
@@ -11,7 +14,7 @@ import { Particles } from './particles';
 import type { Game, Scene } from './scene';
 import { BTN, drawButton, drawHomeButton, drawSlot, homeButton } from './ui';
 
-// Гардероб: шляпки и гитары на двух вкладках, надеты одна шляпка и одна гитара.
+// Гардероб: шляпки, кофточки и гитары на трех вкладках, надето по одной вещи каждого вида.
 // Вещи открываются по общему числу пойманных бабочек. Закрытая вещь = силуэт
 // с бабочкой и полоской «сколько еще осталось». Тап по Пушку с гитарой = мелодия.
 
@@ -20,7 +23,7 @@ const SIL = '#D9C7CF';
 const PX = 40; // Пушок слева
 const PY = 98;
 
-type Tab = 'hat' | 'guitar';
+type Tab = WearKind;
 
 interface Item {
   kind: Tab;
@@ -33,9 +36,10 @@ interface Item {
   h: number;
 }
 
-/** Иконки вкладок: корона и маленькая гитара. */
+/** Иконки вкладок: корона, кофточка, гитара. */
 const TAB_ICONS: Record<Tab, SpriteDef> = {
   hat: scaleDef(HATS.crown, 2),
+  sweater: SWEATER_ICONS.heart,
   guitar: GUITARS.pink,
 };
 
@@ -52,26 +56,23 @@ export class WardrobeScene implements Scene {
   constructor(private g: Game) {
     const s = g.store.data;
     this.fresh = new Set(
-      [...s.unlocked.hats.map((id) => `hat:${id}`), ...s.unlocked.guitars.map((id) => `guitar:${id}`)].filter(
-        (k) => !s.seen.includes(k),
-      ),
+      WEAR_KINDS.flatMap((k) => unlockedOf(s, k).map((id) => `${k}:${id}`)).filter((k) => !s.seen.includes(k)),
     );
     // увидел обновки: искорка на кнопке гардероба дома больше не горит
     if (this.fresh.size) g.store.update((d) => d.seen.push(...this.fresh));
-    // если новая только гитара, сразу открываем вкладку гитар
-    if ([...this.fresh].every((k) => k.startsWith('guitar:')) && this.fresh.size) this.tab = 'guitar';
+    // открываем вкладку, где появилась обновка
+    const firstFresh = [...this.fresh][0];
+    if (firstFresh) this.tab = firstFresh.split(':')[0] as Tab;
     this.dress();
     this.pushok.x = PX;
     this.pushok.y = PY;
   }
 
   private dress() {
-    const s = this.g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
-    this.pushok.guitar = s.equipped.guitar && GUITARS[s.equipped.guitar] ? s.equipped.guitar : null;
+    dress(this.pushok, this.g.store.data);
   }
 
-  /** Вещи текущей вкладки: шляпки сеткой 4×3, гитары 3×2. */
+  /** Вещи текущей вкладки: шляпки сеткой 4×3, кофточки и гитары 3×2. */
   private items(): Item[] {
     if (this.tab === 'hat') {
       return CONFIG.hats
@@ -87,13 +88,16 @@ export class WardrobeScene implements Scene {
           h: 22,
         }));
     }
-    return CONFIG.guitars
-      .filter((gt) => GUITARS[gt.id])
-      .map((gt, i) => ({
-        kind: 'guitar' as const,
-        id: gt.id,
-        unlockAt: gt.unlockAt,
-        def: GUITARS[gt.id],
+    const kind = this.tab;
+    const list = kind === 'guitar' ? CONFIG.guitars : CONFIG.sweaters;
+    const defs = kind === 'guitar' ? GUITARS : SWEATER_ICONS;
+    return list
+      .filter((it) => defs[it.id])
+      .map((it, i) => ({
+        kind,
+        id: it.id,
+        unlockAt: it.unlockAt,
+        def: defs[it.id],
         x: 76 + (i % 3) * 39,
         y: 36 + Math.floor(i / 3) * 30,
         w: 36,
@@ -102,24 +106,22 @@ export class WardrobeScene implements Scene {
   }
 
   private tabButton(t: Tab) {
-    return { x: t === 'hat' ? 100 : 128, y: 3 };
+    return { x: 88 + WEAR_KINDS.indexOf(t) * 28, y: 3 };
   }
 
   private isOpen(it: Item) {
-    const u = this.g.store.data.unlocked;
-    return (it.kind === 'hat' ? u.hats : u.guitars).includes(it.id);
+    return unlockedOf(this.g.store.data, it.kind).includes(it.id);
   }
 
   private isOn(it: Item) {
-    const e = this.g.store.data.equipped;
-    return (it.kind === 'hat' ? e.hat : e.guitar) === it.id;
+    return equippedOf(this.g.store.data, it.kind) === it.id;
   }
 
   targets(safe: Rect): Target[] {
     const list: Target[] = [];
     const h = homeButton(safe);
     list.push({ id: 'btn:home', x: h.x, y: h.y, w: BTN, h: BTN, onTap: () => this.g.go('home') });
-    for (const t of ['hat', 'guitar'] as const) {
+    for (const t of WEAR_KINDS) {
       const b = this.tabButton(t);
       list.push({
         id: `tab:${t}`,
@@ -149,13 +151,10 @@ export class WardrobeScene implements Scene {
       return;
     }
     const on = this.isOn(it);
-    this.g.store.update((s) => {
-      if (it.kind === 'hat') s.equipped.hat = on ? null : it.id;
-      else s.equipped.guitar = on ? null : it.id;
-    });
+    this.g.store.update((s) => toggleWear(s, it.kind, it.id));
     this.dress();
     this.g.sfx.play(on ? 'pop' : 'joy');
-    if (!on) this.particles.burst(PX, it.kind === 'hat' ? 48 : 82, 7);
+    if (!on) this.particles.burst(PX, it.kind === 'hat' ? 48 : it.kind === 'sweater' ? 76 : 82, 7);
     this.pushok.run(null, this.pushok.joy(1, 3));
   }
 
@@ -217,7 +216,7 @@ export class WardrobeScene implements Scene {
     p.lift = lift;
 
     // вкладки: выбранная розовая и чуть выше
-    for (const t of ['hat', 'guitar'] as const) {
+    for (const t of WEAR_KINDS) {
       const b = this.tabButton(t);
       const on = this.tab === t;
       if (on) r.rect(b.x + 3, b.y + BTN - 1, BTN - 6, 2, '#E8457A');

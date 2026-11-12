@@ -54,24 +54,43 @@ export function takeFood(save: Save, food: FoodId): boolean {
   return true;
 }
 
+export type WearKind = 'hat' | 'sweater' | 'guitar';
+
 export interface Unlock {
-  kind: 'hat' | 'guitar';
+  kind: WearKind;
   id: string;
+}
+
+/** Списки вещей по видам: конфиг, открытые, надетая. */
+const WEAR = {
+  hat: { list: () => CONFIG.hats, unlocked: 'hats', equipped: 'hat' },
+  sweater: { list: () => CONFIG.sweaters, unlocked: 'sweaters', equipped: 'sweater' },
+  guitar: { list: () => CONFIG.guitars, unlocked: 'guitars', equipped: 'guitar' },
+} as const;
+
+export const WEAR_KINDS: readonly WearKind[] = ['hat', 'sweater', 'guitar'];
+
+export const unlockedOf = (save: Save, kind: WearKind) => save.unlocked[WEAR[kind].unlocked];
+export const equippedOf = (save: Save, kind: WearKind) => save.equipped[WEAR[kind].equipped];
+
+/** Надеть вещь или снять, если она уже надета. Закрытую не надевает. */
+export function toggleWear(save: Save, kind: WearKind, id: string): boolean {
+  if (!unlockedOf(save, kind).includes(id)) return false;
+  const key = WEAR[kind].equipped;
+  save.equipped[key] = save.equipped[key] === id ? null : id;
+  return true;
 }
 
 /** Добавляет в save все вещи, открытые к текущему числу бабочек. Возвращает новые. */
 export function applyUnlocks(save: Save): Unlock[] {
   const fresh: Unlock[] = [];
-  for (const h of CONFIG.hats) {
-    if (save.butterfliesTotal >= h.unlockAt && !save.unlocked.hats.includes(h.id)) {
-      save.unlocked.hats.push(h.id);
-      fresh.push({ kind: 'hat', id: h.id });
-    }
-  }
-  for (const g of CONFIG.guitars) {
-    if (save.butterfliesTotal >= g.unlockAt && !save.unlocked.guitars.includes(g.id)) {
-      save.unlocked.guitars.push(g.id);
-      fresh.push({ kind: 'guitar', id: g.id });
+  for (const kind of WEAR_KINDS) {
+    const open = unlockedOf(save, kind);
+    for (const item of WEAR[kind].list()) {
+      if (save.butterfliesTotal >= item.unlockAt && !open.includes(item.id)) {
+        open.push(item.id);
+        fresh.push({ kind, id: item.id });
+      }
     }
   }
   return fresh;
@@ -84,10 +103,8 @@ export function catchButterfly(save: Save): Unlock[] {
   return applyUnlocks(save);
 }
 
-export const unseenUnlocks = (save: Save) => [
-  ...save.unlocked.hats.filter((id) => !save.seen.includes(`hat:${id}`)),
-  ...save.unlocked.guitars.filter((id) => !save.seen.includes(`guitar:${id}`)),
-];
+export const unseenUnlocks = (save: Save) =>
+  WEAR_KINDS.flatMap((kind) => unlockedOf(save, kind).filter((id) => !save.seen.includes(`${kind}:${id}`)));
 
 // ---------- кухня ----------
 

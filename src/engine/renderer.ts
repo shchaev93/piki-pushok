@@ -43,7 +43,7 @@ export class Renderer {
   /** Пушок рисуется от нижнего центра: так кадры разной высоты стоят на земле. */
   pushok(p: Pushok, scale = 1) {
     const frame = p.displayFrame;
-    const b = pushokBitmap(frame, p.hat, p.guitar);
+    const b = pushokBitmap(frame, p.hat, p.guitar, p.sweater);
     const bodyH = PUSHOK_FRAMES[frame].length;
     const left = Math.round(p.x) - 8 * scale;
     const top = Math.round(p.y + p.lift) - bodyH * scale;

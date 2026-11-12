@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import {
+  toggleWear,
   isNight,
   morning,
   skyAt,
@@ -93,7 +94,7 @@ describe('открытия гардероба', () => {
     for (let i = 5; i < 14; i++) catchButterfly(s);
     expect(catchButterfly(s)).toEqual([{ kind: 'guitar', id: 'pink' }]);
     expect(s.coins).toBe(15);
-    expect(unseenUnlocks(s)).toEqual(['crown', 'star', 'pink']);
+    expect(unseenUnlocks(s)).toEqual(['crown', 'star', 'heart', 'pink']);
   });
   it('12 шляпок и 6 гитар; пороги из ТЗ сохранены, новые между ними', () => {
     const hats = Object.fromEntries(CONFIG.hats.map((h) => [h.id, h.unlockAt]));
@@ -116,7 +117,7 @@ describe('открытия гардероба', () => {
   it('повторно не открывает', () => {
     const s = defaultSave(T0);
     s.butterfliesTotal = 300;
-    expect(applyUnlocks(s)).toHaveLength(18);
+    expect(applyUnlocks(s)).toHaveLength(24);
     expect(applyUnlocks(s)).toHaveLength(0);
   });
 });
@@ -190,5 +191,33 @@ describe('день и ночь', () => {
     const s = migrate({ version: 2, coins: 3, home: { pushokAt: 'bed' } }, T0);
     expect(s.night).toBeNull();
     expect(s.home).toEqual({ pushokAt: 'bed', sleeping: false });
+  });
+});
+
+describe('кофточки', () => {
+  it('6 кофточек, открываются по бабочкам: первая на 8-й', () => {
+    expect(CONFIG.sweaters).toHaveLength(6);
+    const s = defaultSave(T0);
+    const fresh = [];
+    for (let i = 0; i < 8; i++) fresh.push(...catchButterfly(s));
+    expect(fresh).toContainEqual({ kind: 'sweater', id: 'heart' });
+    expect(s.unlocked.sweaters).toEqual(['heart']);
+  });
+  it('надеть, снять; закрытую не надевает; шляпка и гитара не мешают', () => {
+    const s = defaultSave(T0);
+    s.unlocked.sweaters = ['heart'];
+    s.unlocked.hats = ['crown'];
+    expect(toggleWear(s, 'hat', 'crown')).toBe(true);
+    expect(toggleWear(s, 'sweater', 'heart')).toBe(true);
+    expect(s.equipped).toEqual({ hat: 'crown', guitar: null, sweater: 'heart' });
+    expect(toggleWear(s, 'sweater', 'rainbow')).toBe(false);
+    expect(s.equipped.sweater).toBe('heart');
+    toggleWear(s, 'sweater', 'heart');
+    expect(s.equipped.sweater).toBeNull();
+  });
+  it('старое сохранение без кофточек читается без ошибок', () => {
+    const s = migrate({ version: 2, unlocked: { hats: ['crown'], guitars: [] }, equipped: { hat: 'crown', guitar: null } }, T0);
+    expect(s.unlocked.sweaters).toEqual([]);
+    expect(s.equipped.sweater).toBeNull();
   });
 });

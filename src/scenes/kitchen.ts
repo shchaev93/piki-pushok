@@ -3,9 +3,9 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { cook, takeFood } from '../game/rules';
+import { dress } from '../pushok/dress';
 import { Pushok } from '../pushok/actor';
 import type { Dish } from '../save/schema';
-import { isHatId } from '../sprites/hats';
 import { ICONS } from '../sprites/icons';
 import { DISH_SPRITES, FOOD_SPRITES, ITEM_ICONS } from '../sprites/items';
 import { Particles } from './particles';
@@ -37,7 +37,7 @@ export class KitchenScene implements Scene {
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.pushok.hat = isHatId(s.equipped.hat) ? s.equipped.hat : null;
+    dress(this.pushok, s, false);
     this.pushok.x = 160;
     this.pushok.y = 64;
   }
