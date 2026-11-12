@@ -568,3 +568,26 @@ test('ночь прошла, пока игра была закрыта: откр
   expect(await homeState(page)).toEqual({ sleeping: false, night: false });
   expect((await save(page)).home.sleeping).toBe(false);
 });
+
+test('ночь: тап по окну = утро, спящий Пушок просыпается', async ({ page }) => {
+  await withSave(page, { nightInMs: 10 * 60_000, home: { pushokAt: 'bed', sleeping: true } });
+  expect(await homeState(page)).toEqual({ sleeping: true, night: true });
+  const w = await center(page, 'window');
+  await page.touchscreen.tap(w.x, w.y);
+  await expect.poll(async () => (await homeState(page)).night).toBe(false);
+  await expect.poll(async () => (await homeState(page)).sleeping, { timeout: 5000 }).toBe(false);
+  expect((await save(page)).night).toBeNull();
+  expect((await save(page)).home.sleeping).toBe(false);
+});
+
+test('ночь: спит, нажали другую комнату = просыпается и идет туда', async ({ page }) => {
+  await withSave(page, { nightInMs: 10 * 60_000, home: { pushokAt: 'bed', sleeping: true } });
+  const b = await center(page, 'btn:music');
+  await page.touchscreen.tap(b.x, b.y);
+  // сначала просыпается дома, потом уже музыкальная комната
+  expect(await sceneId(page)).toBe('home');
+  await expect.poll(() => sceneId(page), { timeout: 6000 }).toBe('music');
+  expect((await save(page)).home.sleeping).toBe(false);
+  // ночь при этом не кончилась
+  expect((await save(page)).night).toBeGreaterThan(Date.now());
+});

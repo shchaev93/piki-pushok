@@ -210,6 +210,9 @@ export class HomeScene implements Scene {
     for (const b of this.buttonRects(safe)) {
       list.push({ id: `btn:${b.id}`, x: b.x, y: b.y, w: 22, h: 22, onTap: () => this.tapButton(b.id) });
     }
+    if (this.night) {
+      list.push({ id: 'window', x: 74, y: 28, w: 28, h: 20, onTap: () => this.tapWindow() });
+    }
     const g = this.gearRect(safe);
     list.push({
       id: 'gear',
@@ -277,7 +280,25 @@ export class HomeScene implements Scene {
   private tapButton(id: UiButton) {
     this.sfx.play('tap');
     const to = { cloud: 'cloud', basket: 'shop', wardrobe: 'wardrobe', music: 'music' } as const;
+    if (this.sleeping) {
+      // спит, а мы уходим в другую комнату: сначала просыпается и вылезает из кроватки
+      this.pushok.run('waking', this.wakeThenGo(to[id]));
+      return;
+    }
+    if (this.pushok.busy === 'waking') return;
     this.g.go(to[id]);
+  }
+
+  private *wakeThenGo(to: 'cloud' | 'shop' | 'wardrobe' | 'music'): Script {
+    yield* this.wakeScript();
+    this.g.go(to);
+  }
+
+  /** Ночью окно = «раздвинуть шторы»: наступает утро. */
+  private tapWindow() {
+    if (!this.night) return;
+    this.store.update(morning);
+    // остальное (рассвет, пробуждение) сделает update при смене ночи на день
   }
 
   private *playGuitar(): Script {
