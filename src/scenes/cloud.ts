@@ -2,7 +2,7 @@ import { CONFIG } from '../config';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
-import { catchButterfly, feed, type Unlock } from '../game/rules';
+import { catchButterfly, feed, startNight, type Unlock } from '../game/rules';
 import { Pushok } from '../pushok/actor';
 import { CharCanvas, type SpriteDef } from '../sprites/grid';
 import { isHatId, HATS } from '../sprites/hats';
@@ -23,6 +23,50 @@ const SUN: SpriteDef = {
   palette: FURN_PALETTE,
   rows: new CharCanvas(15, 15).disc(7.5, 7.5, 7, 7, 'Y').rect(4, 5, 2, 2, 'W').rows(),
 };
+/** Солнце на закате: оранжевое. */
+const SUN_SET: SpriteDef = { rows: SUN.rows, palette: { ...FURN_PALETTE, Y: '#F5A04A' } };
+
+/** Месяц: круг, из которого вырезан сдвинутый круг. */
+function moon(): string[] {
+  const c = new CharCanvas(13, 15);
+  for (let y = 0; y < 15; y++) {
+    for (let x = 0; x < 13; x++) {
+      const inA = Math.hypot(x + 0.5 - 6.5, y + 0.5 - 7.5) <= 6.4;
+      const inB = Math.hypot(x + 0.5 - 9.5, y + 0.5 - 5.5) <= 5.6;
+      if (inA && !inB) c.set(x, y, Math.hypot(x + 0.5 - 6.5, y + 0.5 - 7.5) > 5.4 ? 'Y' : 'M');
+    }
+  }
+  return c.rows();
+}
+const MOON: SpriteDef = { rows: moon(), palette: { M: '#FFF6C8', Y: '#F5DE8A' } };
+
+/** Небо по ключевым кадрам: день, закат, вечер, ночь (4 полосы сверху вниз). */
+const SKY = {
+  day: ['#A9DCF7', '#BFE6FA', '#D2EEFC', '#E3F5FD'],
+  sunset: ['#F4AE9C', '#F8C3A8', '#FBD6B4', '#FDE7C6'],
+  evening: ['#7D6CB8', '#A285C4', '#CF9EC2', '#EDBBB2'],
+  night: ['#1C2156', '#232963', '#2C3271', '#373E7E'],
+};
+
+/** Цвета полос неба в момент t (0..1 раунда) и «ночность» 0..1. */
+export function skyColors(t: number): { bands: string[]; night: number } {
+  const N = CONFIG.night;
+  const keys: [number, string[]][] = [
+    [N.sunsetFrom, SKY.day],
+    [(N.sunsetFrom + N.eveningFrom) / 2, SKY.sunset],
+    [(N.eveningFrom + N.nightFrom) / 2, SKY.evening],
+    [N.nightFrom, SKY.night],
+  ];
+  let bands = SKY.day;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [ta, a] = keys[i];
+    const [tb, b] = keys[i + 1];
+    if (t >= ta && t <= tb) bands = a.map((c, j) => mix(c, b[j], (t - ta) / (tb - ta)));
+  }
+  if (t > N.nightFrom) bands = SKY.night;
+  const night = Math.min(1, Math.max(0, (t - N.eveningFrom) / (N.nightFrom - N.eveningFrom)));
+  return { bands, night };
+}
 
 interface Flyer {
   kind: 'butterfly' | 'apple';
@@ -76,6 +120,7 @@ export class CloudScene implements Scene {
   private eatLeft = 0;
   private fresh: Unlock[] = [];
   private safe: Rect = { x0: 0, y0: 0, x1: CONFIG.scene.width, y1: CONFIG.scene.height };
+  private stars = Array.from({ length: 34 }, () => ({ x: Math.random(), y: Math.random() * 0.75, big: Math.random() < 0.2 }));
   private bgClouds = Array.from({ length: 5 }, (_, i) => ({ x: i * 50 + rand(0, 30), y: rand(8, 70), v: rand(2, 5) }));
 
   constructor(private g: Game) {
@@ -99,6 +144,10 @@ export class CloudScene implements Scene {
     f.amp = 0;
     f.vx = 0;
     this.flyers.push(f);
+  }
+  /** Для e2e-тестов: перемотать раунд на долю frac (0..1), чтобы снять небо. */
+  debugSkyAt(frac: number) {
+    this.time = frac * C.roundSeconds * 1000;
   }
   /** Для e2e-тестов: перемотать раунд к концу. */
   debugFinish() {
@@ -210,7 +259,9 @@ export class CloudScene implements Scene {
     this.drag = null;
     if (ph === 'ending') this.g.sfx.play('joy');
     if (ph === 'summary') {
-      this.g.sfx.play(this.fresh.length ? 'fanfare' : 'joy');
+      // долетели до ночи: дома тоже наступает ночь
+      this.g.store.update((s) => startNight(s, this.g.now()));
+      this.g.sfx.play(this.fresh.length ? 'fanfare' : 'lullaby');
       if (this.fresh.length) this.particles.burst(this.cx, this.cy - 20, 10);
     }
   }
@@ -306,19 +357,44 @@ export class CloudScene implements Scene {
     const w = Math.ceil(v.x1 - v.x0) + 2;
     const y0 = Math.floor(v.y0) - 1;
     const h = Math.ceil(v.y1 - v.y0) + 2;
-    // небо к концу раунда чуть теплеет (мягкий таймер без цифр)
+    // небо за раунд: день → закат → вечер → ночь (мягкий таймер без цифр)
     const t = Math.min(1, this.time / (C.roundSeconds * 1000));
-    const warm = Math.max(0, (t - 0.6) / 0.4);
-    const bands = ['#A9DCF7', '#BFE6FA', '#D2EEFC', '#E3F5FD'];
-    const bandsWarm = ['#F7C9B8', '#FAD7C0', '#FCE3C8', '#FDEFD8'];
-    bands.forEach((c, i) => r.rect(x0, y0 + (h * i) / 4, w, h / 4 + 1, mix(c, bandsWarm[i], warm)));
+    const sky = skyColors(t);
+    sky.bands.forEach((c, i) => r.rect(x0, y0 + (h * i) / 4, w, h / 4 + 1, c));
 
-    // солнышко медленно идет по небу
-    const sunX = safe.x0 + 34 + (safe.x1 - safe.x0 - 56) * t;
-    const sunY = 14 - Math.sin(Math.PI * t) * 6;
-    r.sprite('cloud.sun', SUN, sunX, sunY);
+    // звезды загораются вечером и мерцают
+    if (sky.night > 0) {
+      this.stars.forEach((st, i) => {
+        if (i / this.stars.length > sky.night) return;
+        if ((Math.floor(this.time / 350) + i) % 7 === 0) return;
+        const sx = Math.round(x0 + st.x * w);
+        const sy = Math.round(y0 + st.y * h);
+        r.rect(sx, sy, 1, 1, '#FFF6C8');
+        if (st.big) {
+          r.rect(sx - 1, sy, 3, 1, '#FFF6C8');
+          r.rect(sx, sy - 1, 1, 3, '#FFF6C8');
+        }
+      });
+    }
 
+    // солнышко идет по небу и садится за край
+    const N = CONFIG.night;
+    const span = safe.x1 - safe.x0 - 56;
+    const sunX = safe.x0 + 34 + span * Math.min(1, t / N.nightFrom);
+    const set = Math.max(0, (t - 0.45) / (N.nightFrom - 0.45));
+    const sunY = 14 - Math.sin(Math.PI * Math.min(t, 0.5)) * 6 + set * set * (safe.y1 - safe.y0 + 30);
+    if (sunY < safe.y1 + 2) r.sprite(t > N.sunsetFrom ? 'cloud.sunset' : 'cloud.sun', t > N.sunsetFrom ? SUN_SET : SUN, sunX, sunY);
+
+    // месяц поднимается к ночи
+    if (t > N.eveningFrom) {
+      const up = Math.min(1, (t - N.eveningFrom) / (1 - N.eveningFrom));
+      const e = 1 - (1 - up) * (1 - up);
+      r.sprite('cloud.moon', MOON, Math.min(safe.x1, 222) - 46, 70 - e * 58);
+    }
+
+    r.ctx.globalAlpha = 1 - 0.6 * sky.night;
     for (const c of this.bgClouds) r.sprite('icon.cloud', ICONS.cloud, c.x, c.y);
+    r.ctx.globalAlpha = 1;
 
     for (const f of this.flyers) this.drawFlyer(r, f);
 

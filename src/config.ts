@@ -76,6 +76,20 @@ export const CONFIG = {
     stirTurns: 2,
   },
 
+  /**
+   * Ночь: наступает дома, если раунд облачка долетели до конца (до ночного неба).
+   * Длится nightMinutes реального времени, потом утро. Небо в раунде:
+   * день → закат (sunsetFrom) → вечер (eveningFrom) → ночь (nightFrom), доли раунда.
+   */
+  night: {
+    nightMinutes: 20,
+    sunsetFrom: 0.55,
+    eveningFrom: 0.75,
+    nightFrom: 0.88,
+    /** Как часто ночью Пушок зевает, намекая на кроватку, мс. */
+    yawnEveryMs: 6000,
+  },
+
   cloud: {
     roundSeconds: 60,
     coinsPerButterfly: 1,

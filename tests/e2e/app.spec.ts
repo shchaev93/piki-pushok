@@ -238,9 +238,32 @@ test('облачко: тянется пальцем, бабочка = денеж
   await expect.poll(async () => (await cloud(page)).phase, { timeout: 5000 }).toBe('summary');
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-cloud-summary.png` });
+  // долетели до конца: дома наступила ночь
+  expect((await save(page)).night).toBeGreaterThan(Date.now());
   const home = await center(page, 'btn:home2');
   await page.touchscreen.tap(home.x, home.y);
   await expect.poll(async () => (await cloud(page)).id).toBe('home');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-home-night.png` });
+});
+
+test('облачко: закат, вечер и ночь на небе', async ({ page }, info) => {
+  await page.goto('./?nohint');
+  await ready(page);
+  const b = await center(page, 'btn:cloud');
+  await page.touchscreen.tap(b.x, b.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('cloud');
+  for (const [name, frac] of [['sunset', 0.66], ['evening', 0.82], ['night', 0.97]] as const) {
+    await (await piki(page)).evaluate((p, f) => (p.app as unknown as { scene: { debugSkyAt(f: number): void } }).scene.debugSkyAt(f), frac);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: `${SHOTS}/${info.project.name}-sky-${name}.png` });
+  }
+  // выход до конца раунда: ночь дома не наступает
+  const h = await center(page, 'btn:home');
+  await page.touchscreen.tap(h.x, h.y);
+  await expect.poll(async () => (await cloud(page)).id).toBe('home');
+  const night = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save') ?? '{"night":null}').night);
+  expect(night).toBeNull();
 });
 
 test('облачко: выйти домой можно в любой момент, пойманное засчитано', async ({ page }) => {
@@ -275,8 +298,12 @@ async function withSave(page: Page, patch: Record<string, unknown>) {
     const base = {
       version: 2, createdAt: now, coins: 0, butterfliesTotal: 0, satiety: { value, at: now },
       basket: {}, dishes: [], unlocked: { hats: [], guitars: [] }, seen: [],
-      equipped: { hat: null, guitar: null }, settings: { sound: true }, home: { pushokAt: null },
+      equipped: { hat: null, guitar: null }, settings: { sound: true }, home: { pushokAt: null, sleeping: false }, night: null,
     };
+    if (typeof p.nightInMs === 'number') {
+      (base as Record<string, unknown>).night = now + (p.nightInMs as number);
+      delete p.nightInMs;
+    }
     localStorage.setItem('piki-pushok.save', JSON.stringify({ ...base, ...p }));
   }, patch);
   await page.goto('./?nohint');
@@ -478,4 +505,56 @@ test('музыкальная комната: пианино, барабан, т�
   await expect.poll(async () => (await mus()).singing, { timeout: 8000 }).toBe(false);
   await tap('btn:home');
   await expect.poll(() => sceneId(page)).toBe('home');
+});
+
+// ---------- ночь в домике ----------
+
+type HomeDbg = { sleeping: boolean; night: boolean };
+const homeState = (page: Page) =>
+  piki(page).then((h) => h.evaluate((p) => {
+    const s = (p.app as unknown as { scene: HomeDbg }).scene;
+    return { sleeping: s.sleeping, night: s.night };
+  }));
+
+test('ночь: уложить в кроватку, спит пока не нажмешь на него', async ({ page }, info) => {
+  await withSave(page, { nightInMs: 10 * 60_000 });
+  expect((await homeState(page)).night).toBe(true);
+  const bed = await center(page, 'obj:bed');
+  await page.touchscreen.tap(bed.x, bed.y);
+  await expect.poll(async () => (await homeState(page)).sleeping, { timeout: 8000 }).toBe(true);
+  await expect.poll(async () => (await save(page)).home.sleeping).toBe(true);
+  await page.waitForTimeout(3500);
+  expect((await homeState(page)).sleeping).toBe(true); // не просыпается сам
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-night-sleep.png` });
+
+  // тап по другому предмету не будит
+  const tr = await center(page, 'obj:trampoline');
+  await page.touchscreen.tap(tr.x, tr.y);
+  await page.waitForTimeout(300);
+  expect((await homeState(page)).sleeping).toBe(true);
+
+  // после перезапуска игры все еще спит
+  await page.reload();
+  await ready(page);
+  expect((await homeState(page)).sleeping).toBe(true);
+
+  // тап по самому Пушку будит
+  const p = await center(page, 'pushok');
+  await page.touchscreen.tap(p.x, p.y);
+  await expect.poll(async () => (await homeState(page)).sleeping).toBe(false);
+  expect((await save(page)).home.sleeping).toBe(false);
+});
+
+test('ночь: утром Пушок просыпается сам', async ({ page }) => {
+  await withSave(page, { nightInMs: 4000, home: { pushokAt: 'bed', sleeping: true } });
+  expect((await homeState(page)).sleeping).toBe(true);
+  await expect.poll(async () => (await homeState(page)).sleeping, { timeout: 10_000 }).toBe(false);
+  expect((await homeState(page)).night).toBe(false);
+  expect((await save(page)).night).toBeNull();
+});
+
+test('ночь прошла, пока игра была закрыта: открываем утром', async ({ page }) => {
+  await withSave(page, { nightInMs: -1000, home: { pushokAt: 'bed', sleeping: true } });
+  expect(await homeState(page)).toEqual({ sleeping: false, night: false });
+  expect((await save(page)).home.sleeping).toBe(false);
 });

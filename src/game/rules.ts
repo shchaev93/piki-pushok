@@ -102,3 +102,30 @@ export function cook(ingredients: readonly FoodId[]): Dish {
     satiety: Math.max(K.dishMin, Math.round(sum * K.dishMultiplier)),
   };
 }
+
+// ---------- день и ночь ----------
+
+/** Ночь ли сейчас дома. */
+export const isNight = (save: Save, now: number) => save.night !== null && now < save.night;
+
+/** Раунд облачка долетели до ночного неба: дома наступает ночь. */
+export function startNight(save: Save, now: number) {
+  save.night = now + CONFIG.night.nightMinutes * 60_000;
+}
+
+/** Утро: ночь закончилась, спящий Пушок просыпается. */
+export function morning(save: Save) {
+  save.night = null;
+  save.home.sleeping = false;
+}
+
+export type SkyPhase = 'day' | 'sunset' | 'evening' | 'night';
+
+/** Какое небо в момент t (0..1) раунда облачка. */
+export function skyAt(t: number): SkyPhase {
+  const N = CONFIG.night;
+  if (t >= N.nightFrom) return 'night';
+  if (t >= N.eveningFrom) return 'evening';
+  if (t >= N.sunsetFrom) return 'sunset';
+  return 'day';
+}

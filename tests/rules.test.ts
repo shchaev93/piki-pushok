@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import {
+  isNight,
+  morning,
+  skyAt,
+  startNight,
   applyUnlocks,
   buy,
   catchButterfly,
@@ -156,5 +160,35 @@ describe('миграция v1 → v2', () => {
     expect(s.seen).toEqual([]);
     expect(s.equipped.hat).toBe('crown');
     expect(s.settings.sound).toBe(false);
+  });
+});
+
+describe('день и ночь', () => {
+  it('небо раунда: день → закат → вечер → ночь', () => {
+    expect(skyAt(0)).toBe('day');
+    expect(skyAt(0.6)).toBe('sunset');
+    expect(skyAt(0.8)).toBe('evening');
+    expect(skyAt(0.95)).toBe('night');
+    expect(skyAt(1)).toBe('night');
+  });
+  it('долетели до ночи: дома ночь на nightMinutes, потом утро', () => {
+    const s = defaultSave(T0);
+    expect(isNight(s, T0)).toBe(false);
+    startNight(s, T0);
+    expect(isNight(s, T0 + 1000)).toBe(true);
+    expect(isNight(s, T0 + CONFIG.night.nightMinutes * 60_000 + 1)).toBe(false);
+  });
+  it('утро будит спящего Пушка', () => {
+    const s = defaultSave(T0);
+    startNight(s, T0);
+    s.home.sleeping = true;
+    morning(s);
+    expect(s.night).toBeNull();
+    expect(s.home.sleeping).toBe(false);
+  });
+  it('старое сохранение без полей ночи читается как день', () => {
+    const s = migrate({ version: 2, coins: 3, home: { pushokAt: 'bed' } }, T0);
+    expect(s.night).toBeNull();
+    expect(s.home).toEqual({ pushokAt: 'bed', sleeping: false });
   });
 });

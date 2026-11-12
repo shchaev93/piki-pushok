@@ -26,7 +26,10 @@ export interface SaveV2 {
   seen: string[];
   equipped: { hat: string | null; guitar: string | null };
   settings: { sound: boolean };
-  home: { pushokAt: string | null };
+  /** Пушок спит в кроватке ночью (до тапа по нему или до утра). */
+  home: { pushokAt: string | null; sleeping: boolean };
+  /** Если сейчас ночь: момент, когда наступит утро. Иначе null. */
+  night: number | null;
 }
 
 export type Save = SaveV2;
@@ -44,7 +47,8 @@ export function defaultSave(now: number): Save {
     seen: [],
     equipped: { hat: null, guitar: null },
     settings: { sound: true },
-    home: { pushokAt: null },
+    home: { pushokAt: null, sleeping: false },
+    night: null,
   };
 }
 
@@ -99,7 +103,8 @@ export function sanitize(raw: Record<string, unknown>, now: number): Save {
     seen: strArr(raw.seen),
     equipped: { hat: strOrNull(eq.hat), guitar: strOrNull(eq.guitar) },
     settings: { sound: typeof st.sound === 'boolean' ? st.sound : true },
-    home: { pushokAt: strOrNull(home.pushokAt) },
+    home: { pushokAt: strOrNull(home.pushokAt), sleeping: home.sleeping === true },
+    night: typeof raw.night === 'number' && Number.isFinite(raw.night) ? raw.night : null,
   };
 }
 

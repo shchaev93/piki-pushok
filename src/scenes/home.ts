@@ -7,7 +7,7 @@ import { during, Pushok, tween, wait, type Script } from '../pushok/actor';
 import type { Store } from '../save/store';
 import { isHatId } from '../sprites/hats';
 import type { Game, Scene } from './scene';
-import { moodOf, satietyNow, unseenUnlocks } from '../game/rules';
+import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
 import { ITEM_ICONS, MUSIC_SPRITES } from '../sprites/items';
 import { drawCoins, drawSatiety } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
@@ -79,6 +79,79 @@ export class HomeScene implements Scene {
     const hat = store.data.equipped.hat;
     this.pushok.hat = isHatId(hat) ? hat : null;
     this.pushok.guitar = store.data.equipped.guitar;
+
+    // день или ночь: если ночь прошла, пока игра была закрыта, наступило утро
+    const night = isNight(store.data, g.now());
+    if (!night && (store.data.night !== null || store.data.home.sleeping)) store.update(morning);
+    this.wasNight = night;
+    this.nightLevel = night ? 1 : 0;
+    if (night && store.data.home.sleeping) this.pushok.run('sleep', this.sleepScript(true));
+  }
+
+  /** Плавность перехода день/ночь: 0 = день, 1 = ночь. */
+  private nightLevel = 0;
+  private wasNight = false;
+  private yawnIn: number = CONFIG.night.yawnEveryMs;
+
+  get night() {
+    return isNight(this.store.data, this.g.now());
+  }
+
+  get sleeping() {
+    return this.pushok.busy === 'sleep';
+  }
+
+  /** Ночной сон: до тапа по Пушку или до утра. */
+  private *sleepScript(alreadyInBed: boolean): Script {
+    const p = this.pushok;
+    const bed = HOME_OBJECTS.find((o) => o.id === 'bed')!;
+    p.sortY = 66.1;
+    if (alreadyInBed) {
+      p.x = 15;
+      p.y = 60;
+    } else {
+      yield* p.hopTo(bed.rest.x, bed.rest.y);
+      p.sortY = 66.1;
+      yield* p.jumpTo(15, 60, 8);
+      this.sfx.play('lullaby');
+    }
+    p.frame = 'sleep';
+    p.overlay = { sprite: 'bedBlanket', x: bed.x, y: bed.y };
+    if (!this.store.data.home.sleeping) this.store.update((s) => (s.home.sleeping = true));
+    let z = 0;
+    let t = 0;
+    for (;;) {
+      t += yield;
+      p.frame = 'sleep';
+      if (t > z) {
+        z = t + 1300;
+        this.spawn('z', p.x + 6, p.y - 16, 5, -8, 1700);
+      }
+    }
+  }
+
+  /** Проснулся: потягивается, радуется и вылезает из кроватки. */
+  private *wakeScript(): Script {
+    const p = this.pushok;
+    const bed = HOME_OBJECTS.find((o) => o.id === 'bed')!;
+    this.store.update((s) => (s.home.sleeping = false));
+    p.sortY = 66.1;
+    p.overlay = { sprite: 'bedBlanket', x: bed.x, y: bed.y };
+    yield* during(500, () => (p.frame = 'blink'));
+    p.overlay = null;
+    this.sfx.play('joy');
+    yield* p.joy(1, 4);
+    yield* p.jumpTo(bed.rest.x, bed.rest.y, 8);
+    p.sortY = null;
+  }
+
+  /** Ночью Пушок иногда зевает: подсказка, что пора в кроватку. */
+  private *yawnScript(): Script {
+    const p = this.pushok;
+    this.spawn('z', p.x + 5, p.y - 18, 4, -8, 1200);
+    const bed = HOME_OBJECTS.find((o) => o.id === 'bed')!;
+    this.spawn('sparkle', bed.x + 14, bed.y + 2, 0, -6, 900);
+    yield* during(800, (t) => (p.frame = t < 600 ? 'meditate' : 'base'));
   }
 
   /** Сытость сейчас (падает в реальном времени). */
@@ -92,6 +165,27 @@ export class HomeScene implements Scene {
     // очень голодный: грустно сидит и двигается медленнее (без болезней и побегов)
     this.pushok.idleFrame = mood === 'veryHungry' ? 'sad' : 'base';
     this.pushok.speedFactor = mood === 'veryHungry' ? CONFIG.hunger.veryHungrySpeedFactor : 1;
+    // день и ночь
+    const night = this.night;
+    if (this.wasNight && !night) {
+      // утро: спящий Пушок просыпается сам
+      this.store.update(morning);
+      this.sfx.play('joy');
+      if (this.pushok.busy === 'sleep') this.pushok.run(null, this.wakeScript());
+    }
+    this.wasNight = night;
+    // сумерки/рассвет за полторы секунды
+    const target = night ? 1 : 0;
+    const step = dt / 1500;
+    this.nightLevel =
+      target > this.nightLevel ? Math.min(target, this.nightLevel + step) : Math.max(target, this.nightLevel - step);
+    if (night && !this.pushok.busy) {
+      this.yawnIn -= dt;
+      if (this.yawnIn <= 0) {
+        this.yawnIn = CONFIG.night.yawnEveryMs;
+        this.pushok.run(null, this.yawnScript());
+      }
+    }
     this.pushok.update(dt);
     for (const p of this.particles) {
       p.life -= dt;
@@ -146,13 +240,29 @@ export class HomeScene implements Scene {
 
   tapObject(id: ActivityId) {
     const o = HOME_OBJECTS.find((x) => x.id === id)!;
+    // спит: никуда не идет, пока его самого не разбудят
+    if (this.sleeping) {
+      this.spawn('z', this.pushok.x + 6, this.pushok.y - 16, 5, -8, 1200);
+      return;
+    }
     this.sfx.play('tap');
+    if (id === 'bed' && this.night) {
+      // ночью кроватка = спать до утра
+      this.store.update((s) => (s.home.pushokAt = 'bed'));
+      this.ropeAngle = null;
+      this.pushok.run('sleep', this.sleepScript(false));
+      return;
+    }
     this.store.update((s) => (s.home.pushokAt = id));
     this.ropeAngle = null;
     this.pushok.run(id, this.activity(o));
   }
 
   private tapPushok() {
+    if (this.sleeping) {
+      this.pushok.run(null, this.wakeScript());
+      return;
+    }
     if (this.pushok.busy) return;
     const guitar = this.pushok.guitar;
     if (guitar) {
@@ -368,7 +478,7 @@ export class HomeScene implements Scene {
     const items: Item[] = HOME_OBJECTS.map((o) => {
       const { h } = sz(o.sprite);
       let sprite: HomeSpriteId = o.sprite;
-      if (o.id === 'bed' && active === 'bed' && p.overlay) sprite = 'bedSleep';
+      if (o.id === 'bed' && (active === 'bed' || active === 'sleep' || active === null) && p.overlay) sprite = 'bedSleep';
       const hideRope = o.id === 'rope' && this.ropeAngle !== null;
       return {
         y: o.y + h,
@@ -394,6 +504,8 @@ export class HomeScene implements Scene {
     });
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (const it of items) it.draw();
+
+    if (this.nightLevel > 0.01) this.drawNight(r, v);
 
     for (const q of this.particles) {
       if (q.life < 200 && Math.floor(q.life / 50) % 2) continue; // мягкое мерцание перед исчезновением
@@ -437,6 +549,35 @@ export class HomeScene implements Scene {
     r.rect(70, 77, 36, 1, '#F7C6D3');
     r.rect(70, 87, 36, 1, '#F7C6D3');
     for (let x = 72; x < 106; x += 6) r.rect(x, 82, 2, 1, '#F7A9C0');
+  }
+
+  /** Ночь: комната темнеет (синий фильтр), в окне месяц и звезды. */
+  private drawNight(r: Renderer, v: { x0: number; y0: number; x1: number; y1: number }) {
+    const k = this.nightLevel;
+    const c = r.ctx;
+    const lerp = (a: number, b: number) => Math.round(a + (b - a) * k);
+    c.save();
+    c.globalCompositeOperation = 'multiply';
+    c.fillStyle = `rgb(${lerp(255, 124)},${lerp(255, 130)},${lerp(255, 196)})`;
+    c.fillRect(Math.floor(v.x0) - 1, Math.floor(v.y0) - 1, Math.ceil(v.x1 - v.x0) + 2, Math.ceil(v.y1 - v.y0) + 2);
+    c.restore();
+    // окно: ночное небо
+    c.save();
+    c.globalAlpha = k;
+    const wy = 28;
+    r.rect(75, wy + 1, 12, 8, '#232963');
+    r.rect(88, wy + 1, 13, 8, '#232963');
+    r.rect(75, wy + 10, 12, 9, '#232963');
+    r.rect(88, wy + 10, 13, 9, '#232963');
+    r.rect(92, wy + 3, 4, 4, '#FFF6C8'); // месяц
+    r.rect(94, wy + 2, 3, 3, '#232963');
+    for (const [sx, sy] of [[78, 3], [83, 6], [80, 13], [90, 14], [97, 12], [85, 16]]) {
+      if ((Math.floor(this.time / 400) + sx) % 5 !== 0) r.rect(sx, wy + sy, 1, 1, '#FFF6C8');
+    }
+    // ночник у кроватки
+    r.rect(36, 52, 3, 4, '#5A4650');
+    r.rect(35, 49, 5, 3, '#F5C542');
+    c.restore();
   }
 
   /** Скакалка как дуга между «лапками». front = часть перед Пушком. */
