@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
-const buildStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+const buildStamp = process.env.BUILD_STAMP ?? new Date().toISOString().slice(0, 16).replace('T', ' ');
 
 export default defineConfig({
   base: '/piki-pushok/',

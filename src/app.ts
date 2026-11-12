@@ -14,6 +14,7 @@ import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
 import { createAdultPanel, type AdultPanel } from './ui/adult';
+import type { Pwa } from './pwa';
 
 interface Hold {
   pointerId: number;
@@ -26,6 +27,8 @@ const FADE_MS = 220;
 export class App {
   layout!: Layout;
   persist: PersistState = 'unsupported';
+  /** Обновления игры (задается после регистрации service worker). */
+  pwa: Pwa | null = null;
   scene: Scene;
   readonly game: Game;
   private renderer: Renderer;
@@ -61,6 +64,7 @@ export class App {
       version,
       persist: () => this.persist,
       onReset: () => this.go('home'),
+      pwa: () => this.pwa,
     });
     this.scene = this.make('home');
     this.resize();

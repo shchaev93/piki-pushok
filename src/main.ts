@@ -51,9 +51,9 @@ async function start() {
     }
   });
 
-  (window as unknown as { __piki: unknown }).__piki = { app, store };
+  (window as unknown as { __piki: unknown }).__piki = { app, store, version: __APP_VERSION__ };
   maybeShowInstallHint();
-  setupPwa();
+  app.pwa = setupPwa();
   app.persist = await requestPersist();
 }
 

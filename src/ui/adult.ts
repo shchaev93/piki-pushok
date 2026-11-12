@@ -2,6 +2,7 @@ import { CONFIG } from '../config';
 import type { Sfx } from '../audio/sfx';
 import type { PersistState, Store } from '../save/store';
 import { isStandalone } from './platform';
+import type { Pwa } from '../pwa';
 
 // Панель для взрослых. Открывается только удержанием шестеренки 3 секунды.
 // Здесь текст допустим: ребенок сюда не попадает.
@@ -17,6 +18,7 @@ interface Opts {
   version: string;
   persist: () => PersistState;
   onReset: () => void;
+  pwa: () => Pwa | null;
 }
 
 const persistText: Record<PersistState, string> = {
@@ -47,8 +49,26 @@ export function createAdultPanel(o: Opts): AdultPanel {
   const reset = el('button', 'btn hold-btn');
   row.append(sound, reset);
   const resetNote = el('p', 'note');
+  const update = el('button', 'btn', 'Проверить обновление');
   const info = el('div', 'info');
-  panel.append(head, row, resetNote, info);
+  panel.append(head, row, resetNote, update, info);
+
+  // Обновление игры вручную: если на сайте новая версия, игра перезагрузится в нее.
+  update.addEventListener('click', async () => {
+    const pwa = o.pwa();
+    if (!pwa) {
+      update.textContent = 'Обновления недоступны в этом браузере';
+      return;
+    }
+    update.textContent = 'Проверяю...';
+    const r = await pwa.checkAndApply();
+    update.textContent =
+      r === 'ready'
+        ? 'Обновляю...'
+        : r === 'offline'
+          ? 'Нет интернета, попробуйте позже'
+          : 'Установлена последняя версия';
+  });
   document.body.append(root);
 
   const renderSound = () => {
@@ -121,6 +141,7 @@ export function createAdultPanel(o: Opts): AdultPanel {
 
   return {
     open() {
+      update.textContent = 'Проверить обновление';
       renderSound();
       renderInfo();
       resetNote.textContent = '';
