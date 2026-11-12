@@ -9,6 +9,7 @@ import { FeedScene } from './scenes/feed';
 import { ShopScene } from './scenes/shop';
 import { WardrobeScene } from './scenes/wardrobe';
 import { KitchenScene } from './scenes/kitchen';
+import { MusicScene } from './scenes/music';
 import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
@@ -83,6 +84,8 @@ export class App {
         return new WardrobeScene(this.game);
       case 'kitchen':
         return new KitchenScene(this.game);
+      case 'music':
+        return new MusicScene(this.game);
       default:
         return new HomeScene(this.game);
     }

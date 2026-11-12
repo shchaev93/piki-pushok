@@ -16,6 +16,7 @@ const HAT_PALETTE = {
   N: '#D93A55',
   V: '#C9A6E8',
   K: '#5E9E58',
+  R: '#F5A04A',
 };
 
 export const HATS = {
@@ -41,6 +42,30 @@ export const HATS = {
   },
   heart: {
     rows: ['.OO.OO.', 'OJJOJJO', 'OJJJJJO', '.OJJJO.', 'VVOJOVV'],
+    palette: HAT_PALETTE,
+  },
+  star: {
+    rows: ['...Y...', '..YYY..', 'YYYYYYY', '.YYYYY.', '.YY.YY.'],
+    palette: HAT_PALETTE,
+  },
+  flower: {
+    rows: ['..PPP..', '.PPYPP.', '..PPP..', '..GKG..', 'VVVVVVV'],
+    palette: HAT_PALETTE,
+  },
+  cap: {
+    rows: ['.OOOO..', 'OCCWCO.', 'OCCCCCO', 'OOOOOOO'],
+    palette: HAT_PALETTE,
+  },
+  bunny: {
+    rows: ['.O...O.', 'OWO.OWO', 'OPO.OPO', 'OPO.OPO', 'OWO.OWO', 'VVVVVVV'],
+    palette: HAT_PALETTE,
+  },
+  party: {
+    rows: ['...Y...', '..OJO..', '..OPO..', '.OJPJO.', '.OPJPO.', 'OJPJPJO'],
+    palette: HAT_PALETTE,
+  },
+  rainbow: {
+    rows: ['..JJJ..', '.JRRRJ.', 'JRYYYRJ', 'RYG.GYR', 'YG...GY'],
     palette: HAT_PALETTE,
   },
 } satisfies Record<string, SpriteDef>;

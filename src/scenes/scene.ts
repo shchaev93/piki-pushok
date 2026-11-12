@@ -4,7 +4,7 @@ import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import type { Store } from '../save/store';
 
-export type SceneId = 'home' | 'cloud' | 'shop' | 'feed' | 'wardrobe' | 'kitchen';
+export type SceneId = 'home' | 'cloud' | 'shop' | 'feed' | 'wardrobe' | 'kitchen' | 'music';
 
 /** Что сцены получают от приложения. */
 export interface Game {

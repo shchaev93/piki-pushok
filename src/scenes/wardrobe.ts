@@ -3,23 +3,27 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { Pushok, during, type Script } from '../pushok/actor';
-import { silhouette, type SpriteDef } from '../sprites/grid';
+import { scaleDef, silhouette, type SpriteDef } from '../sprites/grid';
 import { HATS, isHatId } from '../sprites/hats';
 import { SMALL_SPRITES } from '../sprites/home-objects';
 import { butterfly, GUITARS, ITEM_ICONS } from '../sprites/items';
 import { Particles } from './particles';
 import type { Game, Scene } from './scene';
-import { BTN, drawHomeButton, drawSlot, homeButton } from './ui';
+import { BTN, drawButton, drawHomeButton, drawSlot, homeButton } from './ui';
 
-// Гардероб: 6 шляпок и 3 гитары, надеты одна шляпка и одна гитара.
+// Гардероб: шляпки и гитары на двух вкладках, надеты одна шляпка и одна гитара.
 // Вещи открываются по общему числу пойманных бабочек. Закрытая вещь = силуэт
 // с бабочкой и полоской «сколько еще осталось». Тап по Пушку с гитарой = мелодия.
 
 const S = 3;
 const SIL = '#D9C7CF';
+const PX = 40; // Пушок слева
+const PY = 98;
+
+type Tab = 'hat' | 'guitar';
 
 interface Item {
-  kind: 'hat' | 'guitar';
+  kind: Tab;
   id: string;
   unlockAt: number;
   def: SpriteDef;
@@ -29,6 +33,12 @@ interface Item {
   h: number;
 }
 
+/** Иконки вкладок: корона и маленькая гитара. */
+const TAB_ICONS: Record<Tab, SpriteDef> = {
+  hat: scaleDef(HATS.crown, 2),
+  guitar: GUITARS.pink,
+};
+
 export class WardrobeScene implements Scene {
   readonly id = 'wardrobe' as const;
   private pushok = new Pushok();
@@ -37,18 +47,22 @@ export class WardrobeScene implements Scene {
   private fresh: Set<string>;
   private think = 0;
   private time = 0;
+  tab: Tab = 'hat';
 
   constructor(private g: Game) {
     const s = g.store.data;
-    this.fresh = new Set([
-      ...s.unlocked.hats.map((id) => `hat:${id}`),
-      ...s.unlocked.guitars.map((id) => `guitar:${id}`),
-    ].filter((k) => !s.seen.includes(k)));
+    this.fresh = new Set(
+      [...s.unlocked.hats.map((id) => `hat:${id}`), ...s.unlocked.guitars.map((id) => `guitar:${id}`)].filter(
+        (k) => !s.seen.includes(k),
+      ),
+    );
     // увидел обновки: искорка на кнопке гардероба дома больше не горит
     if (this.fresh.size) g.store.update((d) => d.seen.push(...this.fresh));
+    // если новая только гитара, сразу открываем вкладку гитар
+    if ([...this.fresh].every((k) => k.startsWith('guitar:')) && this.fresh.size) this.tab = 'guitar';
     this.dress();
-    this.pushok.x = 96;
-    this.pushok.y = 98;
+    this.pushok.x = PX;
+    this.pushok.y = PY;
   }
 
   private dress() {
@@ -57,17 +71,38 @@ export class WardrobeScene implements Scene {
     this.pushok.guitar = s.equipped.guitar && GUITARS[s.equipped.guitar] ? s.equipped.guitar : null;
   }
 
+  /** Вещи текущей вкладки: шляпки сеткой 4×3, гитары 3×2. */
   private items(): Item[] {
-    const out: Item[] = [];
-    CONFIG.hats.forEach((h, i) => {
-      const def = HATS[h.id as keyof typeof HATS];
-      if (!def) return;
-      out.push({ kind: 'hat', id: h.id, unlockAt: h.unlockAt, def, x: 6 + (i % 2) * 29, y: 29 + Math.floor(i / 2) * 25, w: 26, h: 22 });
-    });
-    CONFIG.guitars.forEach((gt, i) => {
-      out.push({ kind: 'guitar', id: gt.id, unlockAt: gt.unlockAt, def: GUITARS[gt.id], x: 150, y: 29 + i * 25, w: 38, h: 22 });
-    });
-    return out;
+    if (this.tab === 'hat') {
+      return CONFIG.hats
+        .filter((h) => isHatId(h.id))
+        .map((h, i) => ({
+          kind: 'hat' as const,
+          id: h.id,
+          unlockAt: h.unlockAt,
+          def: HATS[h.id as keyof typeof HATS],
+          x: 76 + (i % 4) * 29,
+          y: 31 + Math.floor(i / 4) * 25,
+          w: 26,
+          h: 22,
+        }));
+    }
+    return CONFIG.guitars
+      .filter((gt) => GUITARS[gt.id])
+      .map((gt, i) => ({
+        kind: 'guitar' as const,
+        id: gt.id,
+        unlockAt: gt.unlockAt,
+        def: GUITARS[gt.id],
+        x: 76 + (i % 3) * 39,
+        y: 36 + Math.floor(i / 3) * 30,
+        w: 36,
+        h: 26,
+      }));
+  }
+
+  private tabButton(t: Tab) {
+    return { x: t === 'hat' ? 100 : 128, y: 3 };
   }
 
   private isOpen(it: Item) {
@@ -84,16 +119,30 @@ export class WardrobeScene implements Scene {
     const list: Target[] = [];
     const h = homeButton(safe);
     list.push({ id: 'btn:home', x: h.x, y: h.y, w: BTN, h: BTN, onTap: () => this.g.go('home') });
+    for (const t of ['hat', 'guitar'] as const) {
+      const b = this.tabButton(t);
+      list.push({
+        id: `tab:${t}`,
+        x: b.x,
+        y: b.y,
+        w: BTN,
+        h: BTN,
+        onTap: () => {
+          if (this.tab !== t) this.g.sfx.play('pop');
+          this.tab = t;
+        },
+      });
+    }
     for (const it of this.items()) {
       list.push({ id: `${it.kind}:${it.id}`, x: it.x, y: it.y, w: it.w, h: it.h, onTap: () => this.tapItem(it) });
     }
-    list.push({ id: 'pushok', x: 96 - 8 * S, y: 98 - 16 * S, w: 17 * S, h: 16 * S, onTap: () => this.tapPushok() });
+    list.push({ id: 'pushok', x: PX - 8 * S, y: PY - 16 * S, w: 17 * S, h: 16 * S, onTap: () => this.tapPushok() });
     return list;
   }
 
   private tapItem(it: Item) {
     if (!this.isOpen(it)) {
-      // еще закрыто: вещь покачивается, Пушок думает о бабочках
+      // еще закрыто: вещь покачивается, Пушок думает об облачке с бабочками
       this.g.sfx.play('nope');
       this.wiggle.set(`${it.kind}:${it.id}`, 500);
       this.think = 1800;
@@ -106,7 +155,7 @@ export class WardrobeScene implements Scene {
     });
     this.dress();
     this.g.sfx.play(on ? 'pop' : 'joy');
-    if (!on) this.particles.burst(96, it.kind === 'hat' ? 46 : 80, 7);
+    if (!on) this.particles.burst(PX, it.kind === 'hat' ? 48 : 82, 7);
     this.pushok.run(null, this.pushok.joy(1, 3));
   }
 
@@ -129,7 +178,7 @@ export class WardrobeScene implements Scene {
       p.lift = -Math.abs(Math.sin(t / 170)) * 1;
       if (t > n) {
         n += 300;
-        this.particles.spawn('note', 112 + Math.random() * 14, 52, 6 + Math.random() * 8, -16, 1100);
+        this.particles.spawn('note', PX + 16 + Math.random() * 10, 52, 6 + Math.random() * 8, -16, 1100);
       }
     });
   }
@@ -155,17 +204,25 @@ export class WardrobeScene implements Scene {
     // внутри шкафа: доски и вешалка
     r.rect(x0, y0, w, yEnd - y0, '#F6E2C6');
     for (let x = Math.floor(x0 / 14) * 14; x < x0 + w; x += 14) r.rect(x, y0, 1, yEnd - y0, '#EBCDA8');
-    r.rect(x0, 18, w, 2, '#B9825A');
-    r.rect(x0, 18, w, 1, '#5A4650');
-    r.rect(x0, 100, w, yEnd - 100, '#E7B985');
-    r.rect(x0, 100, w, 1, '#5A4650');
-    r.rect(64, 98, 64, 4, '#F7C6D3');
+    r.rect(x0, 27, w, 2, '#B9825A');
+    r.rect(x0, 27, w, 1, '#5A4650');
+    r.rect(x0, 102, w, yEnd - 102, '#E7B985');
+    r.rect(x0, 102, w, 1, '#5A4650');
+    r.rect(PX - 30, 100, 60, 3, '#F7C6D3');
 
     const p = this.pushok;
     const lift = p.lift;
     p.lift = lift * S;
     r.pushok(p, S);
     p.lift = lift;
+
+    // вкладки: выбранная розовая и чуть выше
+    for (const t of ['hat', 'guitar'] as const) {
+      const b = this.tabButton(t);
+      const on = this.tab === t;
+      if (on) r.rect(b.x + 3, b.y + BTN - 1, BTN - 6, 2, '#E8457A');
+      drawButton(r, { x: b.x, y: b.y - (on ? 1 : 0) }, `tab.${t}`, TAB_ICONS[t]);
+    }
 
     const total = this.g.store.data.butterfliesTotal;
     for (const it of this.items()) {
@@ -191,9 +248,7 @@ export class WardrobeScene implements Scene {
       }
     }
 
-    if (this.think > 0) {
-      r.sprite('item.thoughtCloud', ITEM_ICONS.thoughtCloud, 112, 26, 2);
-    }
+    if (this.think > 0) r.sprite('item.thoughtCloud', ITEM_ICONS.thoughtCloud, PX + 6, 20, 2);
     this.particles.draw(r);
     drawHomeButton(r, safe);
   }

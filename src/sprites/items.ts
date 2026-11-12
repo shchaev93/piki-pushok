@@ -249,8 +249,66 @@ function guitar(): string[] {
   ];
 }
 const GUITAR_BASE = def(guitar());
+/** Радужная гитара: корпус полосками. */
+const GUITAR_RAINBOW = def(guitar().map((row, i) => row.replace(/B/g, ['J', 'J', 'R', 'Y', 'G', 'C', 'C'][i])));
 export const GUITARS: Record<string, SpriteDef> = {
   pink: recolor(GUITAR_BASE, { B: '#F7A9C0' }),
+  green: recolor(GUITAR_BASE, { B: '#9BD38A' }),
   blue: recolor(GUITAR_BASE, { B: '#8ECDF2' }),
+  lilac: recolor(GUITAR_BASE, { B: '#C9A6E8' }),
   gold: recolor(GUITAR_BASE, { B: '#F5C542' }),
+  rainbow: GUITAR_RAINBOW,
 };
+
+// ---------- музыкальная комната ----------
+
+const NOTE_ICON = def([
+  '....OOO...',
+  '....OJJO..',
+  '....OJOJO.',
+  '....OJO.OO',
+  '....OJO...',
+  '....OJO...',
+  '....OJO...',
+  '....OJO...',
+  '.OOOOJO...',
+  'OJJJJJO...',
+  'OJJJJJO...',
+  'OJJJJO....',
+  '.OOOO.....',
+]);
+
+function drum(): string[] {
+  const c = new CharCanvas(28, 20);
+  c.box(1, 5, 26, 12, 'J');
+  for (let x = 2; x < 26; x++) for (let y = 7; y < 16; y++) if ((x + y) % 6 === 0) c.set(x, y, 'Y');
+  c.rect(1, 15, 26, 1, 'O');
+  c.disc(14, 5, 13.5, 3.4, 'W');
+  c.set(4, 17, 'O').set(4, 18, 'O').set(3, 19, 'O').set(23, 17, 'O').set(23, 18, 'O').set(24, 19, 'O');
+  return c.rows();
+}
+
+function cymbal(): string[] {
+  const c = new CharCanvas(18, 34);
+  c.box(8, 4, 3, 28, 'S');
+  c.rect(4, 32, 11, 2, 'O');
+  c.disc(9, 3, 8.6, 2.6, 'Y');
+  c.set(5, 2, 'W').set(6, 2, 'W');
+  return c.rows();
+}
+
+function mic(): string[] {
+  const c = new CharCanvas(12, 22);
+  c.box(5, 7, 3, 13, 'S');
+  c.rect(2, 20, 9, 2, 'O');
+  c.disc(6.5, 4, 4.4, 4, 'S');
+  for (const [x, y] of [[4, 3], [6, 2], [8, 3], [5, 5], [7, 5], [6, 4]]) c.set(x, y, 'O');
+  return c.rows();
+}
+
+export const MUSIC_SPRITES = {
+  note: NOTE_ICON,
+  drum: def(drum()),
+  cymbal: def(cymbal()),
+  mic: def(mic()),
+} as const;

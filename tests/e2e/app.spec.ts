@@ -356,15 +356,19 @@ test('гардероб: надеть и снять шляпку, надеть г
   expect((await save(page)).equipped.hat).toBe('bow');
   await tap('hat:crown');
   expect((await save(page)).equipped.hat).toBe('crown');
-  await tap('guitar:pink');
-  expect((await save(page)).equipped.guitar).toBe('pink');
   await tap('hat:wreath'); // закрыто (50 бабочек)
   expect((await save(page)).equipped.hat).toBe('crown');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-wardrobe-hats.png` });
+  await tap('tab:guitar');
+  await tap('guitar:pink');
+  expect((await save(page)).equipped.guitar).toBe('pink');
   await tap('guitar:blue'); // закрыто (70)
   expect((await save(page)).equipped.guitar).toBe('pink');
   await tap('pushok'); // мелодия
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-wardrobe.png` });
+  await tap('tab:hat');
   await tap('hat:crown'); // повторный тап снимает
   expect((await save(page)).equipped.hat).toBeNull();
 
@@ -438,4 +442,40 @@ test('кухня: любой другой набор = суп-сюрприз; в
   const cheeseAt = await toCss(96 - 15 + 15 * 2 - 6 + 6, 38 - 14 + 6);
   await drag(page, cheeseAt, cheeseAt, 1);
   expect(await inPot()).toEqual(['carrot', 'bread']);
+});
+
+// ---------- музыкальная комната ----------
+
+test('музыкальная комната: пианино, барабан, тарелка, Пушок поет в микрофон', async ({ page }, info) => {
+  await withSave(page, { equipped: { hat: 'crown', guitar: null } });
+  const b = await center(page, 'btn:music');
+  await page.touchscreen.tap(b.x, b.y);
+  await expect.poll(() => sceneId(page)).toBe('music');
+  // все цели здесь тоже не меньше 64 CSS px
+  const sizes = await (await piki(page)).evaluate((p) => p.app.targetSizesCss());
+  for (const s of sizes) expect(Math.min(s.w, s.h), s.id).toBeGreaterThanOrEqual(64);
+
+  const tap = async (id: string) => {
+    const c = await center(page, id);
+    await page.touchscreen.tap(c.x, c.y);
+    await page.waitForTimeout(120);
+  };
+  for (let i = 0; i < 8; i++) await tap(`key:${i}`);
+  await tap('drum');
+  await tap('cymbal');
+  type Mus = { notesPlayed: number; songsSung: number; singing: boolean };
+  const mus = () => piki(page).then((h) => h.evaluate((p) => {
+    const s = (p.app as unknown as { scene: Mus }).scene;
+    return { notesPlayed: s.notesPlayed, songsSung: s.songsSung, singing: s.singing };
+  }));
+  expect((await mus()).notesPlayed).toBe(8);
+  await tap('mic');
+  await expect.poll(async () => (await mus()).songsSung).toBe(1);
+  await page.waitForTimeout(800);
+  expect((await mus()).singing).toBe(true);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-music-sing.png` });
+  // песня заканчивается, Пушок возвращается
+  await expect.poll(async () => (await mus()).singing, { timeout: 8000 }).toBe(false);
+  await tap('btn:home');
+  await expect.poll(() => sceneId(page)).toBe('home');
 });

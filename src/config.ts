@@ -91,16 +91,25 @@ export const CONFIG = {
   /** Шляпки и гитары. Порог = общее число пойманных бабочек. */
   hats: [
     { id: 'crown', unlockAt: 5, approved: true },
+    { id: 'star', unlockAt: 12, approved: false },
     { id: 'bow', unlockAt: 25, approved: false },
+    { id: 'flower', unlockAt: 35, approved: false },
     { id: 'wreath', unlockAt: 50, approved: false },
+    { id: 'cap', unlockAt: 70, approved: false },
     { id: 'pompom', unlockAt: 90, approved: false },
+    { id: 'bunny', unlockAt: 115, approved: false },
     { id: 'cherry', unlockAt: 140, approved: false },
+    { id: 'party', unlockAt: 170, approved: false },
     { id: 'heart', unlockAt: 200, approved: false },
+    { id: 'rainbow', unlockAt: 250, approved: false },
   ],
   guitars: [
     { id: 'pink', unlockAt: 15 },
+    { id: 'green', unlockAt: 40 },
     { id: 'blue', unlockAt: 70 },
+    { id: 'lilac', unlockAt: 110 },
     { id: 'gold', unlockAt: 170 },
+    { id: 'rainbow', unlockAt: 240 },
   ],
 } as const;
 

@@ -83,6 +83,16 @@ export function recolor(def: SpriteDef, changes: Record<string, string>): Sprite
   return { rows: def.rows, palette: { ...def.palette, ...changes } };
 }
 
+/** Увеличение сетки в k раз (для крупных иконок кнопок). */
+export function scaleDef(def: SpriteDef, k: number): SpriteDef {
+  const rows: string[] = [];
+  for (const r of def.rows) {
+    const wide = r.split('').map((c) => c.repeat(k)).join('');
+    for (let i = 0; i < k; i++) rows.push(wide);
+  }
+  return { rows, palette: def.palette };
+}
+
 /** Силуэт: все непрозрачные пиксели одного цвета (закрытая вещь в гардеробе). */
 export function silhouette(def: SpriteDef, color: string): SpriteDef {
   const palette: Record<string, string> = {};

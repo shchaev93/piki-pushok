@@ -89,16 +89,30 @@ describe('открытия гардероба', () => {
     for (let i = 5; i < 14; i++) catchButterfly(s);
     expect(catchButterfly(s)).toEqual([{ kind: 'guitar', id: 'pink' }]);
     expect(s.coins).toBe(15);
-    expect(unseenUnlocks(s)).toEqual(['crown', 'pink']);
+    expect(unseenUnlocks(s)).toEqual(['crown', 'star', 'pink']);
   });
-  it('пороги из конфига растут, всего 6 шляпок и 3 гитары', () => {
-    expect(CONFIG.hats.map((h) => h.unlockAt)).toEqual([5, 25, 50, 90, 140, 200]);
-    expect(CONFIG.guitars.map((g) => g.unlockAt)).toEqual([15, 70, 170]);
+  it('12 шляпок и 6 гитар; пороги из ТЗ сохранены, новые между ними', () => {
+    const hats = Object.fromEntries(CONFIG.hats.map((h) => [h.id, h.unlockAt]));
+    expect(hats).toMatchObject({ crown: 5, bow: 25, wreath: 50, pompom: 90, cherry: 140, heart: 200 });
+    const guitars = Object.fromEntries(CONFIG.guitars.map((g) => [g.id, g.unlockAt]));
+    expect(guitars).toMatchObject({ pink: 15, blue: 70, gold: 170 });
+    expect(CONFIG.hats).toHaveLength(12);
+    expect(CONFIG.guitars).toHaveLength(6);
+    // в гардеробе по порядку открытия
+    const sorted = (a: number[]) => [...a].sort((x, y) => x - y);
+    expect(CONFIG.hats.map((h) => h.unlockAt)).toEqual(sorted(CONFIG.hats.map((h) => h.unlockAt)));
+    expect(CONFIG.guitars.map((g) => g.unlockAt)).toEqual(sorted(CONFIG.guitars.map((g) => g.unlockAt)));
+  });
+  it('у каждой вещи из конфига есть спрайт и мелодия гитары', async () => {
+    const { HATS } = await import('../src/sprites/hats');
+    const { GUITARS } = await import('../src/sprites/items');
+    for (const h of CONFIG.hats) expect(HATS, h.id).toHaveProperty(h.id);
+    for (const g of CONFIG.guitars) expect(GUITARS, g.id).toHaveProperty(g.id);
   });
   it('повторно не открывает', () => {
     const s = defaultSave(T0);
     s.butterfliesTotal = 300;
-    expect(applyUnlocks(s)).toHaveLength(9);
+    expect(applyUnlocks(s)).toHaveLength(18);
     expect(applyUnlocks(s)).toHaveLength(0);
   });
 });

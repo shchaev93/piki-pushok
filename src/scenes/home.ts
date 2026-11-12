@@ -8,10 +8,11 @@ import type { Store } from '../save/store';
 import { isHatId } from '../sprites/hats';
 import type { Game, Scene } from './scene';
 import { moodOf, satietyNow, unseenUnlocks } from '../game/rules';
-import { ITEM_ICONS } from '../sprites/items';
+import { ITEM_ICONS, MUSIC_SPRITES } from '../sprites/items';
 import { drawCoins, drawSatiety } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
-import { ICONS, type IconId } from '../sprites/icons';
+import { ICONS } from '../sprites/icons';
+import type { SpriteDef } from '../sprites/grid';
 import { bitmap } from '../sprites/render';
 
 /** Предмет домика: где стоит, где Пушок отдыхает после занятия. */
@@ -50,7 +51,7 @@ interface Particle {
   max: number;
 }
 
-type UiButton = 'cloud' | 'wardrobe' | 'basket';
+type UiButton = 'cloud' | 'wardrobe' | 'basket' | 'music';
 
 export class HomeScene implements Scene {
   readonly id = 'home' as const;
@@ -134,7 +135,7 @@ export class HomeScene implements Scene {
   }
 
   private buttonRects(safe: { x1: number; y0: number }) {
-    const ids: UiButton[] = ['cloud', 'wardrobe', 'basket'];
+    const ids: UiButton[] = ['cloud', 'wardrobe', 'basket', 'music'];
     const right = Math.floor(Math.min(safe.x1, CONFIG.scene.width + 40)) - 3;
     return ids.map((id, i) => ({ id, x: right - (ids.length - i) * 25 + 3, y: Math.ceil(safe.y0) + 3 }));
   }
@@ -167,7 +168,8 @@ export class HomeScene implements Scene {
 
   private tapButton(id: UiButton) {
     this.sfx.play('tap');
-    this.g.go(id === 'cloud' ? 'cloud' : id === 'basket' ? 'shop' : 'wardrobe');
+    const to = { cloud: 'cloud', basket: 'shop', wardrobe: 'wardrobe', music: 'music' } as const;
+    this.g.go(to[id]);
   }
 
   private *playGuitar(): Script {
@@ -411,14 +413,16 @@ export class HomeScene implements Scene {
       for (let x = Math.floor(x0 / 12) * 12 + (y % 20 ? 6 : 0); x < x0 + w; x += 12) r.rect(x, y, 1, 1, '#F6DFC3');
     }
     // окно с облачком
-    r.rect(74, 8, 28, 22, '#5A4650');
-    r.rect(75, 9, 26, 20, '#BFE6FA');
-    r.rect(80, 14, 7, 3, '#FFFFFF');
-    r.rect(82, 13, 4, 1, '#FFFFFF');
-    r.rect(92, 20, 6, 2, '#FFFFFF');
-    r.rect(87, 9, 1, 20, '#5A4650');
-    r.rect(75, 18, 26, 1, '#5A4650');
-    r.rect(72, 30, 32, 2, '#B9825A');
+    // окно ниже кнопок: сверху справа им нужно место
+    const wy = 28;
+    r.rect(74, wy, 28, 20, '#5A4650');
+    r.rect(75, wy + 1, 26, 18, '#BFE6FA');
+    r.rect(80, wy + 5, 7, 3, '#FFFFFF');
+    r.rect(82, wy + 4, 4, 1, '#FFFFFF');
+    r.rect(92, wy + 11, 6, 2, '#FFFFFF');
+    r.rect(87, wy + 1, 1, 18, '#5A4650');
+    r.rect(75, wy + 9, 26, 1, '#5A4650');
+    r.rect(72, wy + 20, 32, 2, '#B9825A');
     // плинтус и пол
     r.rect(x0, FLOOR_Y, w, 1, '#5A4650');
     r.rect(x0, FLOOR_Y + 1, w, 2, '#E7B985');
@@ -457,15 +461,15 @@ export class HomeScene implements Scene {
   }
 
   private drawUi(r: Renderer, safe: { x0: number; y0: number; x1: number; y1: number }) {
-    const icons: Record<UiButton, IconId> = { cloud: 'cloud', wardrobe: 'wardrobe', basket: 'basket' };
+    const icons: Record<UiButton, SpriteDef> = { cloud: ICONS.cloud, wardrobe: ICONS.wardrobe, basket: ICONS.basket, music: MUSIC_SPRITES.note };
     for (const b of this.buttonRects(safe)) {
       const wl = this.wiggle[b.id];
       const dx = wl ? Math.round(Math.sin(wl / 40) * 1.5) : 0;
       r.sprite('icon.button', ICONS.button, b.x + dx, b.y);
-      const ic = ICONS[icons[b.id]];
+      const ic = icons[b.id];
       const iw = ic.rows[0].length;
       const ih = ic.rows.length;
-      r.sprite(`icon.${icons[b.id]}`, ic, b.x + dx + Math.floor((22 - iw) / 2), b.y + Math.floor((22 - ih) / 2));
+      r.sprite(`btn.${b.id}`, ic, b.x + dx + Math.floor((22 - iw) / 2), b.y + Math.floor((22 - ih) / 2));
     }
     const g = this.gearRect(safe);
     r.bmp(bitmap('icon.gear', ICONS.gear), g.x, g.y);

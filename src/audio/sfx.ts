@@ -152,6 +152,83 @@ export class Sfx {
     }
   }
 
+  /** Пианино: нота частотой freq, мягкий удар и затухание. */
+  piano(freq: number) {
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime + 0.005;
+    this.tone(freq, t, 0.9, 'triangle', 0.45);
+    this.tone(freq * 2, t, 0.35, 'sine', 0.12);
+  }
+
+  /** Барабан: низкий «бум» с шорохом. */
+  drum() {
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime + 0.005;
+    this.tone(150, t, 0.35, 'sine', 0.9, 55);
+    this.hiss(t, 0.08, 1200, 0.35);
+  }
+
+  /** Тарелка: звонкий шум. */
+  cymbal() {
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime + 0.005;
+    this.hiss(t, 0.7, 7000, 0.35);
+    this.hiss(t, 0.25, 4000, 0.2);
+  }
+
+  /**
+   * Пушок поет тонким голоском: пила через фильтры гласной «а», с вибрато.
+   * notes = частоты, каждая длится step секунд. Возвращает длительность песни в мс.
+   */
+  sing(notes: readonly number[], step = 0.32): number {
+    if (!this.ready()) return notes.length * step * 1000;
+    const ctx = this.ctx!;
+    const t0 = ctx.currentTime + 0.03;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    const vib = ctx.createOscillator();
+    const vibGain = ctx.createGain();
+    vib.frequency.value = 6;
+    vibGain.gain.value = 9;
+    vib.connect(vibGain).connect(osc.frequency);
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t0);
+    // форманты «а», сдвинутые вверх: голос маленького зверька
+    for (const [f, q, g] of [
+      [1100, 6, 1],
+      [1700, 8, 0.6],
+      [3200, 10, 0.25],
+    ] as const) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f;
+      bp.Q.value = q;
+      const gg = ctx.createGain();
+      gg.gain.value = g;
+      osc.connect(bp).connect(gg).connect(out);
+    }
+    out.connect(this.master!);
+    notes.forEach((f, i) => {
+      const t = t0 + i * step;
+      osc.frequency.setValueAtTime(f, t);
+      // каждый слог «ля»: мягкая атака и спад
+      out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(0.5, t + 0.04);
+      out.gain.exponentialRampToValueAtTime(0.18, t + step * 0.8);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.98);
+    });
+    const end = t0 + notes.length * step + 0.05;
+    osc.start(t0);
+    vib.start(t0);
+    osc.stop(end);
+    vib.stop(end);
+    return notes.length * step * 1000;
+  }
+
+  private ready() {
+    return this.enabled && !!this.ctx && !!this.master && this.ctx.state === 'running';
+  }
+
   /** Короткая мелодия гитары: у каждой гитары своя. */
   melody(id: string) {
     if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
@@ -160,6 +237,9 @@ export class Sfx {
       pink: [523, 659, 784, 659, 523, 587, 659, 523],
       blue: [392, 494, 587, 494, 440, 392, 330, 392],
       gold: [523, 784, 659, 1047, 988, 784, 880, 1047],
+      green: [440, 523, 587, 523, 440, 392, 440, 523],
+      lilac: [659, 587, 523, 587, 659, 659, 659, 523],
+      rainbow: [523, 587, 659, 698, 784, 880, 988, 1047],
     };
     (songs[id] ?? songs.pink).forEach((f, i) => {
       this.tone(f, t + i * 0.17, 0.3, 'triangle', 0.35);
