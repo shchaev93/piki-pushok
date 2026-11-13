@@ -160,3 +160,26 @@ body.gallery canvas {
 .panel .info p {
   margin: 3px 0;
 }
+.panel .stars {
+  border: 2px dashed #e7b985;
+  border-radius: 12px;
+  padding: 6px 10px;
+  margin: 8px 0;
+}
+.panel .stars-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+.btn.good {
+  background: #fff3c4;
+}
+.btn[hidden] {
+  display: none;
+}
+.btn:disabled {
+  opacity: 0.45;
+}
+.panel .history p {
+  margin: 2px 0;
+}

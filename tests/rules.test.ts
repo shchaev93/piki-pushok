@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../src/config';
 import {
+  rateLesson,
+  restartStars,
+  starsGoalReached,
+  undoLesson,
   toggleWear,
   isNight,
   morning,
@@ -219,5 +223,48 @@ describe('кофточки', () => {
     const s = migrate({ version: 2, unlocked: { hats: ['crown'], guitars: [] }, equipped: { hat: 'crown', guitar: null } }, T0);
     expect(s.unlocked.sweaters).toEqual([]);
     expect(s.equipped.sweater).toBeNull();
+  });
+});
+
+describe('звезды за занятия', () => {
+  it('звезды только прибавляются: +1 старалась, 0 без звезды; не больше цели', () => {
+    const s = defaultSave(T0);
+    rateLesson(s, 1, T0);
+    rateLesson(s, 0, T0);
+    rateLesson(s, 0, T0);
+    rateLesson(s, 1, T0);
+    expect(s.stars.count).toBe(2); // «без звезды» ничего не отнимает
+    for (let i = 0; i < 10; i++) rateLesson(s, 1, T0);
+    expect(s.stars.count).toBe(CONFIG.stars.goal);
+    expect(starsGoalReached(s)).toBe(true);
+    expect(s.stars.log).toHaveLength(14);
+  });
+  it('отмена последней записи (родитель промахнулся кнопкой)', () => {
+    const s = defaultSave(T0);
+    rateLesson(s, 1, T0);
+    rateLesson(s, 1, T0);
+    expect(undoLesson(s)).toBe(true);
+    expect(s.stars.count).toBe(1);
+    rateLesson(s, 0, T0);
+    undoLesson(s);
+    expect(s.stars.count).toBe(1);
+    expect(s.stars.log).toHaveLength(1);
+    // на полной доске лишняя звезда не записывается в счет, и отмена его не портит
+    for (let i = 0; i < 6; i++) rateLesson(s, 1, T0);
+    undoLesson(s);
+    expect(s.stars.count).toBe(CONFIG.stars.goal);
+  });
+  it('новый круг: с нуля, история остается, можно отменить', () => {
+    const s = defaultSave(T0);
+    for (let i = 0; i < 5; i++) rateLesson(s, 1, T0);
+    restartStars(s, T0);
+    expect(s.stars.count).toBe(0);
+    expect(s.stars.log).toHaveLength(6);
+    undoLesson(s);
+    expect(s.stars.count).toBe(5);
+  });
+  it('старое сохранение без звезд читается с нуля', () => {
+    const s = migrate({ version: 2, coins: 1 }, T0);
+    expect(s.stars).toEqual({ count: 0, seen: 0, log: [] });
   });
 });

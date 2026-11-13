@@ -30,6 +30,17 @@ export interface SaveV2 {
   home: { pushokAt: string | null; sleeping: boolean };
   /** Если сейчас ночь: момент, когда наступит утро. Иначе null. */
   night: number | null;
+  /** Звезды за занятия: ставят родители. seen = сколько звезд ребенок уже видел. */
+  stars: { count: number; seen: number; log: LessonEntry[] };
+}
+
+/** Запись о занятии: delta = оценка (+1/0/-1), applied = насколько реально изменился счет. */
+export interface LessonEntry {
+  at: number;
+  delta: number;
+  applied: number;
+  /** «Новый круг»: счет обнулен после награды. */
+  restart?: boolean;
 }
 
 export type Save = SaveV2;
@@ -49,6 +60,7 @@ export function defaultSave(now: number): Save {
     settings: { sound: true },
     home: { pushokAt: null, sleeping: false },
     night: null,
+    stars: { count: 0, seen: 0, log: [] },
   };
 }
 
@@ -79,6 +91,27 @@ function dishesOf(v: unknown): Dish[] {
     .map((d) => ({ dish: d.dish as string, satiety: Math.max(0, Math.round(d.satiety as number)) }));
 }
 
+function starsOf(v: unknown): Save['stars'] {
+  const st = isObj(v) ? v : {};
+  const goal = CONFIG.stars.goal;
+  const log = Array.isArray(st.log)
+    ? st.log
+        .filter(isObj)
+        .filter((e) => typeof e.at === 'number' && typeof e.delta === 'number' && typeof e.applied === 'number')
+        .map((e) => ({
+          at: e.at as number,
+          delta: Math.sign(e.delta as number),
+          applied: Math.round(e.applied as number),
+          ...(e.restart === true ? { restart: true } : {}),
+        }))
+    : [];
+  return {
+    count: Math.floor(num(st.count, 0, 0, goal)),
+    seen: Math.floor(num(st.seen, 0, 0, goal)),
+    log,
+  };
+}
+
 /** Приводит данные любой формы к валидной Save, подставляя значения по умолчанию. */
 export function sanitize(raw: Record<string, unknown>, now: number): Save {
   const d = defaultSave(now);
@@ -105,6 +138,7 @@ export function sanitize(raw: Record<string, unknown>, now: number): Save {
     settings: { sound: typeof st.sound === 'boolean' ? st.sound : true },
     home: { pushokAt: strOrNull(home.pushokAt), sleeping: home.sleeping === true },
     night: typeof raw.night === 'number' && Number.isFinite(raw.night) ? raw.night : null,
+    stars: starsOf(raw.stars),
   };
 }
 

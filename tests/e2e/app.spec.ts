@@ -129,9 +129,9 @@ test('шестеренка: короткое касание не открыва�
     await btn.dispatchEvent('pointerup', { pointerId: 3 });
   };
   await press(800);
-  await expect(page.locator('.adult .note')).toHaveText('');
+  await expect(page.locator('.adult .reset-note')).toHaveText('');
   await press(3300);
-  await expect(page.locator('.adult .note')).toHaveText('Прогресс сброшен.');
+  await expect(page.locator('.adult .reset-note')).toHaveText('Прогресс сброшен.');
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('piki-pushok.save')!));
   expect(after.coins).toBe(0);
   expect(after.settings.sound).toBe(false);
@@ -590,4 +590,53 @@ test('ночь: спит, нажали другую комнату = просы�
   expect((await save(page)).home.sleeping).toBe(false);
   // ночь при этом не кончилась
   expect((await save(page)).night).toBeGreaterThan(Date.now());
+});
+
+// ---------- звезды за занятия ----------
+
+test('звезды: ставят только родители в панели, ребенок видит их на доске', async ({ page }, info) => {
+  await page.goto('./?nohint');
+  await ready(page);
+  // ребенок может только посмотреть доску: тап открывает, второй тап закрывает, счет не меняется
+  const board = await center(page, 'stars');
+  await page.touchscreen.tap(board.x, board.y);
+  await page.waitForTimeout(200);
+  const close = await center(page, 'stars:close');
+  await page.touchscreen.tap(close.x, close.y);
+  await page.waitForTimeout(200);
+  expect(await center(page, 'stars')).not.toBeNull();
+
+  // родитель: шестеренка 3 секунды → «Старалась» трижды, «Без звезды», отмена последней
+  // (звезды только прибавляются: кнопки «снять звезду» нет)
+  const g = await center(page, 'gear');
+  await hold(page, g.x, g.y, 3300);
+  await expect(page.locator('.adult')).toBeVisible();
+  await expect(page.getByRole('button', { name: /−★/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Старалась: +★' }).click();
+  await page.getByRole('button', { name: 'Старалась: +★' }).click();
+  await page.getByRole('button', { name: 'Без звезды в этот раз' }).click();
+  expect((await save(page)).stars.count).toBe(2);
+  await page.getByRole('button', { name: 'Старалась: +★' }).click();
+  expect((await save(page)).stars.count).toBe(3);
+  await page.getByRole('button', { name: 'Отменить последнюю запись' }).click();
+  expect((await save(page)).stars.count).toBe(2);
+  await expect(page.locator('.stars-title')).toContainText('2 из 5');
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-stars-panel.png` });
+  await page.getByRole('button', { name: 'Закрыть' }).click();
+
+  // домик сам показывает новые звезды крупно, потом запоминает, что ребенок их видел
+  await page.waitForTimeout(1300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-stars-gain.png` });
+  await expect.poll(async () => (await save(page)).stars.seen, { timeout: 5000 }).toBe(2);
+  const c2 = await center(page, 'stars:close');
+  await page.touchscreen.tap(c2!.x, c2!.y);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-stars-board.png` });
+});
+
+test('звезды: пять звезд = цель достигнута', async ({ page }, info) => {
+  await withSave(page, { stars: { count: 5, seen: 4, log: [] } });
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-stars-goal.png` });
+  await expect.poll(async () => (await save(page)).stars.seen, { timeout: 5000 }).toBe(5);
 });

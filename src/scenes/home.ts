@@ -7,6 +7,7 @@ import { dress } from '../pushok/dress';
 import { during, Pushok, tween, wait, type Script } from '../pushok/actor';
 import type { Store } from '../save/store';
 import type { Game, Scene } from './scene';
+import { StarBoard } from './star-board';
 import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
 import { ITEM_ICONS, MUSIC_SPRITES } from '../sprites/items';
 import { drawCoins, drawSatiety } from './ui';
@@ -84,7 +85,13 @@ export class HomeScene implements Scene {
     this.wasNight = night;
     this.nightLevel = night ? 1 : 0;
     if (night && store.data.home.sleeping) this.pushok.run('sleep', this.sleepScript(true));
+    this.board = new StarBoard(g, () => {
+      if (!this.pushok.busy) this.pushok.run(null, this.pushok.joy(2, 4));
+    });
   }
+
+  /** Доска звезд за занятия на стене. */
+  readonly board: StarBoard;
 
   /** Плавность перехода день/ночь: 0 = день, 1 = ночь. */
   private nightLevel = 0;
@@ -163,6 +170,7 @@ export class HomeScene implements Scene {
     // очень голодный: грустно сидит и двигается медленнее (без болезней и побегов)
     this.pushok.idleFrame = mood === 'veryHungry' ? 'sad' : 'base';
     this.pushok.speedFactor = mood === 'veryHungry' ? CONFIG.hunger.veryHungrySpeedFactor : 1;
+    this.board.update(dt);
     // день и ночь
     const night = this.night;
     if (this.wasNight && !night) {
@@ -200,7 +208,9 @@ export class HomeScene implements Scene {
   // ---------- касания ----------
 
   targets(safe: Rect): Target[] {
-    const list: Target[] = [];
+    // открыта доска звезд: тап в любом месте ее закрывает
+    if (this.board.open) return this.board.targets();
+    const list: Target[] = [...this.board.targets()];
     for (const o of HOME_OBJECTS) {
       const { w, h } = sz(o.sprite);
       list.push({ id: `obj:${o.id}`, x: o.x, y: o.y, w, h, onTap: () => this.tapObject(o.id) });
@@ -490,6 +500,7 @@ export class HomeScene implements Scene {
     const v = r.layout.view;
     const safe = r.layout.safe;
     this.drawRoom(r, v);
+    this.board.drawBoard(r);
 
     const p = this.pushok;
     const active = p.busy;
@@ -532,6 +543,7 @@ export class HomeScene implements Scene {
     }
 
     this.drawUi(r, safe);
+    this.board.drawOverlay(r);
   }
 
   private drawRoom(r: Renderer, v: { x0: number; y0: number; x1: number; y1: number }) {

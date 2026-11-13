@@ -2,7 +2,7 @@ import type { SpriteDef } from './grid';
 import { HATS } from './hats';
 import { HOME_SPRITES, SMALL_SPRITES } from './home-objects';
 import { ICONS } from './icons';
-import { BIG_CLOUD, BUTTERFLY_FOLDED, BUTTERFLY_OPEN, DISH_SPRITES, FOOD_SPRITES, GUITARS, ITEM_ICONS, MUSIC_SPRITES } from './items';
+import { BIG_CLOUD, BUTTERFLY_FOLDED, BUTTERFLY_OPEN, DISH_SPRITES, FOOD_SPRITES, GUITARS, ITEM_ICONS, MUSIC_SPRITES, STAR_SPRITES } from './items';
 import { PUSHOK_FRAMES, pushokDef, type PushokFrame } from './pushok';
 import { SWEATER_ICONS, SWEATERS } from './sweaters';
 
@@ -24,6 +24,7 @@ export function allSprites(): Record<string, SpriteDef> {
   add('food', FOOD_SPRITES);
   add('dish', DISH_SPRITES);
   add('music', MUSIC_SPRITES);
+  add('star', STAR_SPRITES);
   out['cloud.big'] = BIG_CLOUD;
   out['butterfly.open'] = BUTTERFLY_OPEN;
   out['butterfly.folded'] = BUTTERFLY_FOLDED;

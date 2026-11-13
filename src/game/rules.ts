@@ -146,3 +146,44 @@ export function skyAt(t: number): SkyPhase {
   if (t >= N.sunsetFrom) return 'sunset';
   return 'day';
 }
+
+// ---------- звезды за занятия (только из панели взрослых) ----------
+
+/**
+ * Оценка занятия: 1 = старалась (+звезда), 0 = без звезды в этот раз.
+ * Звезды только прибавляются: заработанное не отнимается (решение родителей).
+ */
+export type LessonRating = 1 | 0;
+const LOG_MAX = 200;
+
+/** Записать занятие. Счет растет до цели и никогда не уменьшается от оценки. */
+export function rateLesson(save: Save, rating: LessonRating, now: number) {
+  const st = save.stars;
+  const before = st.count;
+  st.count = Math.min(CONFIG.stars.goal, before + Math.max(0, rating));
+  st.log.push({ at: now, delta: rating, applied: st.count - before });
+  if (st.log.length > LOG_MAX) st.log.splice(0, st.log.length - LOG_MAX);
+}
+
+/** Отменить последнюю запись (родитель ошибся кнопкой). */
+export function undoLesson(save: Save): boolean {
+  const e = save.stars.log.pop();
+  if (!e) return false;
+  if (e.restart) {
+    // отмена «нового круга»: возвращаем звезды
+    save.stars.count = Math.min(CONFIG.stars.goal, -e.applied);
+  } else {
+    save.stars.count = Math.min(CONFIG.stars.goal, Math.max(0, save.stars.count - e.applied));
+  }
+  return true;
+}
+
+export const starsGoalReached = (save: Save) => save.stars.count >= CONFIG.stars.goal;
+
+/** Новый круг после награды: счет с нуля, история сохраняется. */
+export function restartStars(save: Save, now: number) {
+  const before = save.stars.count;
+  save.stars.count = 0;
+  save.stars.seen = 0;
+  save.stars.log.push({ at: now, delta: 0, applied: -before, restart: true });
+}

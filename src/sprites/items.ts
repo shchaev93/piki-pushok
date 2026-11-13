@@ -312,3 +312,37 @@ export const MUSIC_SPRITES = {
   cymbal: def(cymbal()),
   mic: def(mic()),
 } as const;
+
+// ---------- звезды за занятия ----------
+
+const STAR_BIG_ROWS = [
+  '....O....',
+  '...OYO...',
+  '...OYO...',
+  'OOOYYYOOO',
+  'OYYYYYYYO',
+  '.OYYYYYO.',
+  '..OYYYO..',
+  '.OYYOYYO.',
+  '.OOO.OOO.',
+];
+const STAR_SMALL_ROWS = ['...O...', '..OYO..', 'OOOYOOO', 'OYYYYYO', '.OYYYO.', '.OYOYO.', '.OO.OO.'];
+/** Пустое место под звезду: бледный контур. */
+const EMPTY = { O: '#D9C2A6', Y: '#F3E6D6' };
+
+/** Облачко-реплика: награда «поговорить с Пушком». */
+function talk(): string[] {
+  const c = new CharCanvas(15, 13);
+  c.disc(7.5, 5, 7.4, 5, 'W');
+  c.set(3, 10, 'O').set(3, 11, 'O').set(2, 12, 'O').set(4, 10, 'W');
+  for (const x of [4, 7, 10]) c.set(x, 5, 'J').set(x + 1, 5, 'J');
+  return c.rows();
+}
+
+export const STAR_SPRITES = {
+  big: def(STAR_BIG_ROWS),
+  bigEmpty: { rows: STAR_BIG_ROWS, palette: { ...FURN_PALETTE, ...EMPTY } },
+  small: def(STAR_SMALL_ROWS),
+  smallEmpty: { rows: STAR_SMALL_ROWS, palette: { ...FURN_PALETTE, ...EMPTY } },
+  talk: def(talk()),
+} as const;

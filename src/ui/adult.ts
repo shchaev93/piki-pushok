@@ -1,4 +1,5 @@
 import { CONFIG } from '../config';
+import { rateLesson, restartStars, starsGoalReached, undoLesson, type LessonRating } from '../game/rules';
 import type { Sfx } from '../audio/sfx';
 import type { PersistState, Store } from '../save/store';
 import { isStandalone } from './platform';
@@ -19,6 +20,8 @@ interface Opts {
   persist: () => PersistState;
   onReset: () => void;
   pwa: () => Pwa | null;
+  /** Звезды поменялись: домик покажет ребенку изменение. */
+  onStarsChanged: () => void;
 }
 
 const persistText: Record<PersistState, string> = {
@@ -48,10 +51,71 @@ export function createAdultPanel(o: Opts): AdultPanel {
   const sound = el('button', 'btn');
   const reset = el('button', 'btn hold-btn');
   row.append(sound, reset);
-  const resetNote = el('p', 'note');
+  const resetNote = el('p', 'note reset-note');
   const update = el('button', 'btn', 'Проверить обновление');
   const info = el('div', 'info');
-  panel.append(head, row, resetNote, update, info);
+  // ---------- звезды за занятия ----------
+  const stars = el('div', 'stars');
+  const starsTitle = el('p', 'stars-title');
+  const rateRow = el('div', 'row');
+  const good = el('button', 'btn good', 'Старалась: +★');
+  const noStar = el('button', 'btn', 'Без звезды в этот раз');
+  rateRow.append(good, noStar);
+  const starsRow2 = el('div', 'row');
+  const undo = el('button', 'btn', 'Отменить последнюю запись');
+  const restart = el('button', 'btn', 'Новый круг (звезды с нуля)');
+  starsRow2.append(undo, restart);
+  const starsNote = el('p', 'note');
+  const history = el('div', 'info history');
+  stars.append(starsTitle, rateRow, starsRow2, starsNote, history);
+  let starsChanged = false;
+
+  const fmt = (t: number) =>
+    new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const renderStars = () => {
+    const st = o.store.data.stars;
+    const goal = CONFIG.stars.goal;
+    starsTitle.textContent = `Звезды за занятия: ${'★'.repeat(st.count)}${'☆'.repeat(goal - st.count)} (${st.count} из ${goal})`;
+    restart.hidden = !starsGoalReached(o.store.data);
+    undo.disabled = st.log.length === 0;
+    if (starsGoalReached(o.store.data)) {
+      starsNote.textContent = `Цель достигнута! Награда: разговор с Пушком (появится, когда сделаем). «Новый круг» начнет звезды заново.`;
+    }
+    const label = (e: { delta: number; applied: number; restart?: boolean }) =>
+      e.restart ? 'новый круг' : e.delta > 0 ? 'старалась, +★' : e.delta < 0 ? 'звезда снята (старая запись)' : 'без звезды';
+    history.replaceChildren(
+      ...st.log
+        .slice(-6)
+        .reverse()
+        .map((e) => el('p', '', `${fmt(e.at)}: ${label(e)}${!e.restart && e.delta !== 0 && e.applied === 0 ? ' (без изменений: предел)' : ''}`)),
+    );
+  };
+  const rate = (r: LessonRating, msg: string) => {
+    o.store.update((s) => rateLesson(s, r, Date.now()));
+    starsChanged = true;
+    starsNote.textContent = msg;
+    renderStars();
+  };
+  good.addEventListener('click', () =>
+    rate(1, 'Записано: +★. Новая звезда появится на доске в домике. Похвалите за то, что именно получилось.'),
+  );
+  noStar.addEventListener('click', () =>
+    rate(0, 'Записано без звезды. Заработанные звезды остаются: в следующий раз получится.'),
+  );
+  undo.addEventListener('click', () => {
+    o.store.update((s) => undoLesson(s));
+    starsChanged = true;
+    starsNote.textContent = 'Последняя запись отменена.';
+    renderStars();
+  });
+  restart.addEventListener('click', () => {
+    o.store.update((s) => restartStars(s, Date.now()));
+    starsChanged = true;
+    starsNote.textContent = 'Новый круг: звезды с нуля, история сохранена.';
+    renderStars();
+  });
+
+  panel.append(head, stars, row, resetNote, update, info);
 
   // Обновление игры вручную: если на сайте новая версия, игра перезагрузится в нее.
   update.addEventListener('click', async () => {
@@ -135,12 +199,18 @@ export function createAdultPanel(o: Opts): AdultPanel {
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) reset.addEventListener(ev, stopHold);
 
   close.addEventListener('click', () => {
+    if (starsChanged) {
+      starsChanged = false;
+      o.onStarsChanged();
+    }
     root.hidden = true;
     stopHold();
   });
 
   return {
     open() {
+      starsNote.textContent = '';
+      renderStars();
       update.textContent = 'Проверить обновление';
       renderSound();
       renderInfo();

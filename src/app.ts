@@ -65,6 +65,8 @@ export class App {
       persist: () => this.persist,
       onReset: () => this.go('home'),
       pwa: () => this.pwa,
+      // родители поменяли звезды: заходим в домик заново, чтобы ребенок увидел изменение
+      onStarsChanged: () => this.go('home'),
     });
     this.scene = this.make('home');
     this.resize();
