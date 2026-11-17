@@ -33,6 +33,10 @@ export function createTalkSection(store: Store) {
   code.type = 'text';
   code.placeholder = 'Код доступа';
   code.autocomplete = 'off';
+  // Код сверяется с учетом регистра: iPhone не должен сам делать первую букву заглавной или «исправлять» код.
+  code.autocapitalize = 'off';
+  code.spellcheck = false;
+  code.setAttribute('autocorrect', 'off');
   const check = el('button', 'btn', 'Сохранить и проверить связь');
   const checkNote = el('p', 'note');
   const notes = el('details', 'info');
