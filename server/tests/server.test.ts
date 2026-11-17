@@ -141,7 +141,14 @@ describe('запрос к модели', () => {
 
   it('пометки эмоции и действия: вырезаются из голоса, уходят игре и в историю', () => {
     const c = extractCues('[эмоция: Радость] [действие: горка] Ура, качусь с горки!');
-    expect(c).toEqual({ text: '  Ура, качусь с горки!', emotion: 'joy', action: 'slide', tags: '[эмоция: радость] [действие: горка]' });
+    expect(c).toEqual({
+      text: '  Ура, качусь с горки!',
+      emotion: 'joy',
+      action: 'slide',
+      cook: null,
+      tags: '[эмоция: радость] [действие: горка]',
+      unknown: [],
+    });
     expect(cleanForSpeech(c.text)).toBe('Ура, качусь с горки!');
     // незнакомые слова — без пометки, но и вслух скобки не звучат
     const u = extractCues('[действие: полет] [эмоция: ярость] Не получится!');
@@ -158,6 +165,25 @@ describe('запрос к модели', () => {
     expect(r).toMatchObject({ emotion: 'laugh', action: 'trampoline', tags: '[эмоция: смех] [действие: батут]' });
     const llm = calls.find((c) => c.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] };
     expect(llm.messages[0].content).toContain('Сейчас ты в домике');
+  });
+
+  it('готовка из корзинки: пометка с продуктами, корзинка и блюда — в промпте', async () => {
+    const c = extractCues('[готовить: Морковка, сыр] Варю суп!');
+    expect(c).toMatchObject({ action: 'kitchen', cook: ['carrot', 'cheese'], tags: '[готовить: морковка, сыр]', unknown: [] });
+    expect(extractCues('[готовить: хлебушек и сыр]').cook).toEqual(['bread', 'cheese']);
+    // один продукт или незнакомый — не готовка, а «непонятная пометка» для журнала
+    expect(extractCues('[готовить: торт] Ой').action).toBeNull();
+    expect(extractCues('[готовить: торт] Ой').unknown).toEqual(['[готовить: торт]']);
+    expect(extractCues('[действие: полетать] Нет').unknown).toEqual(['[действие: полетать]']);
+
+    const { d, calls } = deps({}, { reply: '[готовить: морковка, морковка] Варю!' });
+    const r = await talk(d, { text: 'приготовь', history: [], place: 'home', basket: { carrot: 2, cheese: 0, cake: 5 }, dishes: ['pie', 'soup', 'pie'] });
+    expect(r).toMatchObject({ action: 'kitchen', cook: ['carrot', 'carrot'], reply: 'Варю!' });
+    const sys = (calls.find((x) => x.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] }).messages[0].content;
+    expect(sys).toContain('КОРЗИНКА (продукты для готовки прямо сейчас): морковка 2\n');
+    expect(sys).toContain('ГОТОВЫЕ БЛЮДА на столике: пирог 2, суп-сюрприз 1');
+    expect(sys).toContain('ЧТО ТЫ УМЕЕШЬ');
+    expect(sys).toContain('ВЕЖЛИВОСТЬ');
   });
 
   it('тишина в режиме «слушает сам»: ни модели, ни голоса — Пушок молча слушает дальше', async () => {

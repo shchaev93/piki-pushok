@@ -1,4 +1,5 @@
-import { CONFIG, type ActivityId } from '../config';
+import { CONFIG, type ActivityId, type FoodId } from '../config';
+import { cook, takeFood } from '../game/rules';
 import type { Sfx } from '../audio/sfx';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
@@ -9,7 +10,7 @@ import type { Store } from '../save/store';
 import type { Game, Scene } from './scene';
 import { StarBoard } from './star-board';
 import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
-import { ITEM_ICONS, MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
+import { DISH_SPRITES, FOOD_SPRITES, ITEM_ICONS, MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
 import { drawCoins, drawSatiety } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
 import { ICONS } from '../sprites/icons';
@@ -44,6 +45,15 @@ export const HOME_OBJECTS: HomeObject[] = [
 ];
 
 const FLOOR_Y = 58;
+/** Сколько летит продукт из лапок в кастрюльку, мс. */
+const FLY_MS = 500;
+
+/** Все ли продукты есть в корзинке (с учетом повторов: «морковка, морковка» — нужно две). */
+function hasFoods(basket: Partial<Record<FoodId, number>>, foods: readonly FoodId[]) {
+  const K = CONFIG.kitchen;
+  if (foods.length < K.minIngredients || foods.length > K.maxIngredients) return false;
+  return foods.every((f) => (basket[f] ?? 0) >= foods.filter((x) => x === f).length);
+}
 
 interface Particle {
   sprite: SmallSpriteId;
@@ -93,21 +103,25 @@ export class HomeScene implements Scene {
     });
     // разговор продолжается в домике: эмоции и действия из ответов Пушка
     g.talk.onCue = (c) => this.onCue(c);
-    const action = g.talk.takeAction();
-    if (action) this.doAction(action);
+    const cue = g.talk.takeCue();
+    if (cue?.action) this.doAction(cue.action, cue.cook);
   }
 
   // ---------- разговор ----------
 
+  /** Готовка голосом: продукт летит в кастрюльку; готовое блюдо поднимается над плитой. */
+  private flyingFood: { food: FoodId; t: number } | null = null;
+  private shownDish: { dish: string; t: number } | null = null;
+
   private onCue(c: Cue) {
-    if (c.action) return this.doAction(c.action);
+    if (c.action) return this.doAction(c.action, c.cook);
     if (c.emotion && !this.pushok.busy) {
       this.pushok.run('emotion', emotionScript(this.pushok, c.emotion, (s, x, y, vx, vy, life) => this.spawn(s, x, y, vx, vy, life)));
     }
   }
 
   /** Кира попросила: покатайся, попрыгай, приготовь… Все понарошку и бесплатно, как по касанию. */
-  doAction(a: Action) {
+  doAction(a: Action, cookList: FoodId[] | null = null) {
     const talk = this.g.talk;
     let script: Script;
     switch (a) {
@@ -115,7 +129,8 @@ export class HomeScene implements Scene {
         script = this.pretendEat();
         break;
       case 'kitchen':
-        script = this.pretendCook();
+        // по-настоящему — только если все продукты правда есть в корзинке, иначе понарошку
+        script = cookList && hasFoods(this.store.data.basket, cookList) ? this.realCook(cookList) : this.pretendCook();
         break;
       case 'guitar':
         script = this.playOrSing();
@@ -181,6 +196,45 @@ export class HomeScene implements Scene {
     this.spawn('heart', p.x, p.y - 18, 0, -12, 900);
     this.sfx.play('joy');
     yield* p.joy(1, 3);
+  }
+
+  /** «Приготовь» по-настоящему: продукты из корзинки в кастрюльку, мешает, блюдо уходит на столик. */
+  private *realCook(foods: FoodId[]): Script {
+    const p = this.pushok;
+    const o = HOME_OBJECTS.find((x) => x.id === 'kitchen')!;
+    this.store.update((s) => (s.home.pushokAt = 'kitchen'));
+    yield* p.hopTo(o.rest.x, o.rest.y);
+    for (const f of foods) {
+      this.flyingFood = { food: f, t: 0 };
+      this.sfx.play('pop');
+      yield* during(FLY_MS, (t) => (p.frame = t < 200 ? 'happy2' : 'sniff'));
+      this.flyingFood = null;
+      this.sfx.play('splash');
+      this.spawn('bubble', 166, 34, 0, -8, 600);
+    }
+    let n = 0;
+    yield* during(2200, (t) => {
+      const odd = Math.floor(t / 300) % 2;
+      p.frame = odd ? 'sniff' : 'happy1';
+      p.lift = odd ? -1 : 0;
+      if (t >= n) {
+        n += 350;
+        this.spawn('steam', 162 + Math.random() * 12, 28, (Math.random() - 0.5) * 6, -9, 900);
+      }
+      if (Math.floor(t / 700) !== Math.floor((t - 16) / 700)) this.sfx.play('stir');
+    });
+    p.lift = 0;
+    // пока мешал, корзинка могла поменяться: готовим, только если продукты все еще есть
+    if (hasFoods(this.store.data.basket, foods)) {
+      const dish = cook(foods);
+      this.store.update((s) => {
+        for (const f of foods) takeFood(s, f);
+        s.dishes.push(dish);
+      });
+      this.shownDish = { dish: dish.dish, t: 0 };
+      this.sfx.play(dish.dish === 'soup' ? 'joy' : 'fanfare');
+    }
+    yield* p.joy(2, 4);
   }
 
   /** «Сыграй»: с гитарой — мелодия, без гитары — пританцовывает с нотками. */
@@ -292,6 +346,8 @@ export class HomeScene implements Scene {
       }
     }
     this.pushok.update(dt);
+    if (this.flyingFood) this.flyingFood.t += dt;
+    if (this.shownDish && (this.shownDish.t += dt) > 2600) this.shownDish = null;
     // идет разговор: пока Пушок говорит, у него двигается рот
     const talk = this.g.talk;
     if (talk.on && !this.pushok.busy) {
@@ -652,6 +708,24 @@ export class HomeScene implements Scene {
     for (const q of this.particles) {
       if (q.life < 200 && Math.floor(q.life / 50) % 2) continue; // мягкое мерцание перед исчезновением
       r.sprite(`small.${q.sprite}`, SMALL_SPRITES[q.sprite], q.x, q.y);
+    }
+
+    // готовка голосом: продукт дугой летит из лапок в кастрюльку, блюдо поднимается над плитой
+    if (this.flyingFood) {
+      const f = this.flyingFood.food;
+      const k = Math.min(1, this.flyingFood.t / FLY_MS);
+      const sx = p.x - 6;
+      const sy = p.y - 16;
+      const x = sx + (162 - sx) * k;
+      const y = sy + (30 - sy) * k - Math.sin(Math.PI * k) * 14;
+      r.sprite(`food.${f}`, FOOD_SPRITES[f], x, y);
+    }
+    if (this.shownDish) {
+      const key = this.shownDish.dish;
+      const d = DISH_SPRITES[key] ?? DISH_SPRITES.soup;
+      const t = this.shownDish.t;
+      const y = 24 - Math.min(1, t / 500) * 12 + Math.sin(t / 200);
+      r.sprite(`dish.${key}`, d, 168 - Math.floor(d.rows[0].length / 2), y);
     }
 
     this.drawUi(r, safe);

@@ -20,6 +20,9 @@ interface Scenario {
   event?: 'start' | 'warn' | 'end';
   /** Где Пушок: в комнате разговора (по умолчанию) или в домике. */
   place?: 'talk' | 'home';
+  /** Корзинка и готовые блюда (для готовки). */
+  basket?: Record<string, number>;
+  dishes?: string[];
 }
 interface Scenarios {
   storyTitle: string;
@@ -101,7 +104,16 @@ for (const s of set.scenarios) {
   const msgs: ChatMessage[] = [
     {
       role: 'system',
-      content: pushokSystemPrompt({ kidName, notebook: seed, outfit: 'корона и кофточка в полоску', today, glossary, place: s.place ?? 'talk' }),
+      content: pushokSystemPrompt({
+        kidName,
+        notebook: seed,
+        outfit: 'корона и кофточка в полоску',
+        today,
+        glossary,
+        place: s.place ?? 'talk',
+        basket: s.basket ?? { seeds: 1 },
+        dishes: s.dishes ?? [],
+      }),
     },
     ...(s.history ?? []).map(toMsg),
     { role: 'user', content: [s.event ? EVENT[s.event] : '', s.say ? fill(s.say) : ''].filter(Boolean).join('\n') },

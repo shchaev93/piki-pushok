@@ -183,6 +183,31 @@ test('разговор: «покатайся с горки» — Пушок бе
   expect(m.talks.at(-1)!.place).toBe('home');
 });
 
+test('разговор: «приготовь» — Пушок по-настоящему готовит у плиты из корзинки, блюдо на столике', async ({ page, browserName }, info) => {
+  test.skip(browserName !== 'chromium');
+  const m: Mock = { talks: [], extra: { action: 'kitchen', cook: ['carrot', 'cheese'], tags: '[готовить: морковка, сыр]' } };
+  await mockServer(page, m);
+  await withTalkSave(page, { serverUrl: SERVER, code: 'c', notebook: { stories: [] } });
+  // в корзинке морковка и сыр
+  await page.evaluate(() => {
+    const s = (window as unknown as { __piki: { store: { update(f: (s: { basket: Record<string, number> }) => void): void } } }).__piki.store;
+    s.update((d) => (d.basket = { carrot: 1, cheese: 1, apple: 2 }));
+  });
+  await tap(page, 'btn:talk');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await page.waitForTimeout(800);
+  await tap(page, 'mic');
+  await expect.poll(async () => (await talkState(page)).scene, { timeout: 5000 }).toBe('home');
+  // корзинка и блюда уходят на сервер, чтобы Пушок знал, из чего готовить
+  expect(m.talks.at(-1)).toMatchObject({ basket: { carrot: 1, cheese: 1, apple: 2 }, dishes: [] });
+  await page.waitForTimeout(2200);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-talk-home-cook.png` });
+  await expect.poll(async () => (await save(page)).dishes.length, { timeout: 10000 }).toBe(1);
+  const s = await save(page);
+  expect(s.dishes[0].dish).toBe('soup');
+  expect(s.basket).toEqual({ apple: 2 });
+});
+
 test('разговор: эмоция из ответа — Пушок радуется в комнате разговора', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium');
   const m: Mock = { talks: [], extra: { emotion: 'joy', tags: '[эмоция: радость]' } };

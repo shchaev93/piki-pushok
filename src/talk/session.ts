@@ -1,5 +1,5 @@
 import { Sfx } from '../audio/sfx';
-import { CONFIG } from '../config';
+import { CONFIG, type FoodId } from '../config';
 import type { Save, TalkTurn } from '../save/schema';
 import type { Game } from '../scenes/scene';
 import { api, TalkError, type Action, type Emotion, type Place, type TalkEvent } from './api';
@@ -17,6 +17,8 @@ export type Why = 'time' | 'budget' | 'config' | 'auth' | 'network' | 'mic' | nu
 export interface Cue {
   emotion: Emotion | null;
   action: Action | null;
+  /** Продукты из корзинки для настоящей готовки (action = 'kitchen'). */
+  cook: FoodId[] | null;
 }
 
 const T = CONFIG.talk;
@@ -67,7 +69,7 @@ export class TalkSession {
   /** Текущая комната подписывается на эмоции и действия из ответов. */
   onCue: ((c: Cue) => void) | null = null;
   /** Действие, которое попросили в комнате разговора: его сделает домик. */
-  pendingAction: Action | null = null;
+  pendingCue: Cue | null = null;
   /** Пушок сейчас делает действие (горка, батут…): слушать начнет, когда закончит, — иначе услышит свои «вжух» и «буммм». */
   actionRunning = false;
   readonly rec = new Recorder();
@@ -183,10 +185,10 @@ export class TalkSession {
   }
 
   /** Действие для домика (если просили в комнате разговора). */
-  takeAction(): Action | null {
-    const a = this.pendingAction;
-    this.pendingAction = null;
-    return a;
+  takeCue(): Cue | null {
+    const c = this.pendingCue;
+    this.pendingCue = null;
+    return c;
   }
 
   private async begin(gen: number) {
@@ -274,6 +276,8 @@ export class TalkSession {
       outfit: outfitText(s),
       place: this.place,
       quiet: !!req.quiet && !event,
+      basket: s.basket,
+      dishes: s.dishes.map((d) => d.dish),
     });
     if (gen !== this.gen) return;
     this.failures = 0;
@@ -288,7 +292,7 @@ export class TalkSession {
       if (d.talk.history.length > 400) d.talk.history.splice(0, d.talk.history.length - 400);
     });
     if (r.heard) this.turnsSinceNotebook++;
-    if (r.emotion || r.action) this.onCue?.({ emotion: r.emotion ?? null, action: r.action ?? null });
+    if (r.emotion || r.action) this.onCue?.({ emotion: r.emotion ?? null, action: r.action ?? null, cook: r.cook ?? null });
     if (gen !== this.gen) return;
     this.phase = 'speaking';
     await this.voice.play(r.audio);

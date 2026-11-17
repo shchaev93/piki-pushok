@@ -126,6 +126,21 @@ interface TalkBody {
   place?: string;
   /** Фраза поймана по громкости: если слов не распознано, молча слушать дальше (без голоса и без затрат на него). */
   quiet?: boolean;
+  /** Корзинка игры: { carrot: 2, cheese: 1 } — из чего Пушок может готовить. */
+  basket?: unknown;
+  /** Готовые блюда на столике: ['soup', 'pie']. */
+  dishes?: unknown;
+}
+
+/** Корзинка из запроса: только известные продукты и целые количества 0..99. */
+function basketOf(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const id of ['seeds', 'apple', 'carrot', 'cheese', 'bread']) {
+    const n = Number((v as Record<string, unknown>)[id]);
+    if (Number.isFinite(n) && n > 0) out[id] = Math.min(99, Math.floor(n));
+  }
+  return out;
 }
 
 export async function talk(d: Deps, body: TalkBody) {
@@ -152,7 +167,13 @@ export async function talk(d: Deps, body: TalkBody) {
   let reply: string;
   let costUsd = 0;
   let usage = { prompt: 0, completion: 0, reasoning: 0 };
-  let cues: { emotion: Emotion | null; action: Action | null; tags: string } = { emotion: null, action: null, tags: '' };
+  let cues: { emotion: Emotion | null; action: Action | null; cook: string[] | null; tags: string } = {
+    emotion: null,
+    action: null,
+    cook: null,
+    tags: '',
+  };
+  let unknownTags: string[] = [];
   if (!heard && !body.event && body.quiet) {
     // шум без слов в режиме «слушает сам»: Пушок молчит и слушает дальше
     budget.countRequest();
@@ -172,6 +193,8 @@ export async function talk(d: Deps, body: TalkBody) {
           today: moscowDate(d.now()),
           glossary: d.glossary,
           place: body.place === 'home' ? 'home' : 'talk',
+          basket: basketOf(body.basket),
+          dishes: arr(body.dishes).filter((x): x is string => typeof x === 'string').slice(0, 20),
         }),
       },
       ...historyMessages(history),
@@ -183,7 +206,8 @@ export async function talk(d: Deps, body: TalkBody) {
     costUsd = r.costUsd;
     usage = r.usage;
     const c = extractCues(r.text);
-    cues = { emotion: c.emotion, action: c.action, tags: c.tags };
+    cues = { emotion: c.emotion, action: c.action, cook: c.cook, tags: c.tags };
+    unknownTags = c.unknown;
     reply = cleanForSpeech(c.text) || FALLBACK;
   }
   const t2 = Date.now();
@@ -195,7 +219,8 @@ export async function talk(d: Deps, body: TalkBody) {
   budget.countRequest();
   d.log?.(
     `talk ${body.event ?? '-'}: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), распознано ${heard.length} симв., ` +
-      `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.action ?? '-'}` : ''}; ` +
+      `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.action ?? '-'}${cues.cook ? `(${cues.cook.join('+')})` : ''}` : ''}` +
+      `${unknownTags.length ? ` непонятные пометки ${unknownTags.join(' ')}` : ''}; ` +
       `распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс`,
   );
   return { heard, reply, audio, costUsd, usage, ...cues };

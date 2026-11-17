@@ -1,3 +1,4 @@
+import type { FoodId } from '../config';
 import type { TalkTurn } from '../save/schema';
 
 // Связь с сервером Пушка. Адрес и код доступа вводят родители в панели взрослых.
@@ -17,6 +18,8 @@ export interface TalkReply {
   audio: string[];
   emotion?: Emotion | null;
   action?: Action | null;
+  /** Продукты для настоящей готовки (при action = 'kitchen'). */
+  cook?: FoodId[] | null;
   /** Пометки в виде текста — для истории (модель видит, что показывала). */
   tags?: string;
 }
@@ -65,7 +68,7 @@ const toServer = (h: TalkTurn[]) => h.map(({ role, text, tags }) => ({ role, tex
 export const api = {
   talk: (
     c: ServerConf,
-    req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean },
+    req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean; basket: Partial<Record<FoodId, number>>; dishes: string[] },
   ) => call<TalkReply>(c, '/talk', { ...req, history: toServer(req.history.slice(-24)) }),
   notebook: (c: ServerConf, notebook: unknown, history: TalkTurn[]) =>
     call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: history.map(({ role, text }) => ({ role, text })) }, 60000),
