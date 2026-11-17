@@ -11,12 +11,13 @@ import type { Game, Scene } from './scene';
 import { StarBoard } from './star-board';
 import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
 import { DISH_SPRITES, FOOD_SPRITES, ITEM_ICONS, MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
-import { drawCoins, drawSatiety } from './ui';
+import { drawCoins, drawSatiety, drawTalkRing } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
 import { ICONS } from '../sprites/icons';
 import type { SpriteDef } from '../sprites/grid';
 import { bitmap } from '../sprites/render';
 import { emotionScript } from '../pushok/emotion';
+import { ACTIVITY_TEXT, DISH_TEXT, FOOD_TEXT, logEvent } from '../game/journal';
 import type { Action } from '../talk/api';
 import type { Cue } from '../talk/session';
 
@@ -133,11 +134,17 @@ export class HomeScene implements Scene {
         script = cookList && hasFoods(this.store.data.basket, cookList) ? this.realCook(cookList) : this.pretendCook();
         break;
       case 'guitar':
-        script = this.playOrSing();
+        script = this.playOrSing(true);
+        break;
+      case 'sing':
+        script = this.playOrSing(false);
         break;
       default: {
         const o = HOME_OBJECTS.find((x) => x.id === a)!;
-        this.store.update((s) => (s.home.pushokAt = o.id));
+        this.store.update((s) => {
+          s.home.pushokAt = o.id;
+          logEvent(s, `${ACTIVITY_TEXT[o.id]} (по ее просьбе)`);
+        });
         this.ropeAngle = null;
         script = this.activity(o);
       }
@@ -160,7 +167,10 @@ export class HomeScene implements Scene {
   private *pretendEat(): Script {
     const p = this.pushok;
     const o = HOME_OBJECTS.find((x) => x.id === 'table')!;
-    this.store.update((s) => (s.home.pushokAt = 'table'));
+    this.store.update((s) => {
+      s.home.pushokAt = 'table';
+      logEvent(s, 'понарошку покушал за столиком');
+    });
     p.sortY = 97.9;
     yield* p.hopTo(o.rest.x, o.rest.y);
     let n = 0;
@@ -180,7 +190,10 @@ export class HomeScene implements Scene {
   private *pretendCook(): Script {
     const p = this.pushok;
     const o = HOME_OBJECTS.find((x) => x.id === 'kitchen')!;
-    this.store.update((s) => (s.home.pushokAt = 'kitchen'));
+    this.store.update((s) => {
+      s.home.pushokAt = 'kitchen';
+      logEvent(s, 'понарошку готовил у плиты');
+    });
     yield* p.hopTo(o.rest.x, o.rest.y);
     let n = 0;
     yield* during(2600, (t) => {
@@ -230,6 +243,7 @@ export class HomeScene implements Scene {
       this.store.update((s) => {
         for (const f of foods) takeFood(s, f);
         s.dishes.push(dish);
+        logEvent(s, `сварил у плиты ${DISH_TEXT[dish.dish] ?? 'блюдо'} из: ${foods.map((f) => FOOD_TEXT[f]).join(', ')}; оно ждет на столике`);
       });
       this.shownDish = { dish: dish.dish, t: 0 };
       this.sfx.play(dish.dish === 'soup' ? 'joy' : 'fanfare');
@@ -238,8 +252,10 @@ export class HomeScene implements Scene {
   }
 
   /** «Сыграй»: с гитарой — мелодия, без гитары — пританцовывает с нотками. */
-  private *playOrSing(): Script {
-    if (this.pushok.guitar) this.sfx.melody(this.pushok.guitar);
+  private *playOrSing(withGuitar: boolean): Script {
+    const guitar = withGuitar ? this.pushok.guitar : null;
+    this.store.update((s) => logEvent(s, guitar ? 'играл на гитаре' : 'пританцовывал и напевал песенку'));
+    if (guitar) this.sfx.melody(guitar);
     yield* this.playGuitar();
   }
 
@@ -292,7 +308,10 @@ export class HomeScene implements Scene {
   private *wakeScript(): Script {
     const p = this.pushok;
     const bed = HOME_OBJECTS.find((o) => o.id === 'bed')!;
-    this.store.update((s) => (s.home.sleeping = false));
+    this.store.update((s) => {
+      s.home.sleeping = false;
+      logEvent(s, 'проснулся и вылез из кроватки');
+    });
     p.sortY = 66.1;
     p.overlay = { sprite: 'bedBlanket', x: bed.x, y: bed.y };
     yield* during(500, () => (p.frame = 'blink'));
@@ -328,7 +347,10 @@ export class HomeScene implements Scene {
     const night = this.night;
     if (this.wasNight && !night) {
       // утро: спящий Пушок просыпается сам
-      this.store.update(morning);
+      this.store.update((s) => {
+        morning(s);
+        logEvent(s, 'наступило утро');
+      });
       this.sfx.play('joy');
       if (this.pushok.busy === 'sleep') this.pushok.run(null, this.wakeScript());
     }
@@ -423,13 +445,21 @@ export class HomeScene implements Scene {
     this.sfx.play('tap');
     if (id === 'bed' && this.night) {
       // ночью кроватка = спать до утра
-      this.store.update((s) => (s.home.pushokAt = 'bed'));
+      this.store.update((s) => {
+        s.home.pushokAt = 'bed';
+        logEvent(s, 'ночью лег спать в кроватку');
+      });
       this.ropeAngle = null;
       this.pushok.run('sleep', this.sleepScript(false));
       return;
     }
-    this.store.update((s) => (s.home.pushokAt = id));
+    this.store.update((s) => {
+      s.home.pushokAt = id;
+      if (id !== 'table' && id !== 'kitchen') logEvent(s, ACTIVITY_TEXT[id]);
+    });
     this.ropeAngle = null;
+    // пока прыгает и шумит, разговор не слушает: его звуки не должны попасть в микрофон
+    this.g.talk.rec.hold(CONFIG.activityMs[id] + 1500);
     this.pushok.run(id, this.activity(o));
   }
 
@@ -443,7 +473,9 @@ export class HomeScene implements Scene {
     if (this.pushok.busy) return;
     const guitar = this.pushok.guitar;
     if (guitar) {
-      // с гитарой в лапках Пушок играет мелодию
+      // с гитарой в лапках Пушок играет мелодию (разговор в это время не слушает)
+      this.g.talk.rec.hold(2500);
+      this.store.update((s) => logEvent(s, 'играл на гитаре'));
       this.sfx.melody(guitar);
       this.pushok.run('music', this.playGuitar());
       return;
@@ -475,7 +507,10 @@ export class HomeScene implements Scene {
   /** Ночью окно = «раздвинуть шторы»: наступает утро. */
   private tapWindow() {
     if (!this.night) return;
-    this.store.update(morning);
+    this.store.update((s) => {
+      morning(s);
+      logEvent(s, 'раздвинули шторы, и наступило утро');
+    });
     // остальное (рассвет, пробуждение) сделает update при смене ночи на день
   }
 
@@ -832,23 +867,7 @@ export class HomeScene implements Scene {
     // идет разговор: вокруг кнопки разговора видно, слушает Пушок, думает или говорит
     const talk = this.g.talk;
     const tb = talk.on ? this.buttonRects(safe).find((b) => b.id === 'talk') : undefined;
-    if (tb) {
-      const cx = tb.x + 11;
-      const cy = tb.y + 11;
-      const off = Math.floor(this.time / 110);
-      const hearing = talk.hearing;
-      for (let i = 0; i < 24; i++) {
-        let on = false;
-        if (hearing) on = true;
-        else if (talk.phase === 'listening') on = (i + off) % 24 < 3;
-        else if (talk.phase === 'speaking') on = (i + off) % 4 === 0;
-        else if (talk.phase === 'thinking' || talk.phase === 'connecting') on = (i + off) % 8 < 2;
-        if (!on) continue;
-        const a = (i / 24) * Math.PI * 2;
-        const rr = 13 + (hearing ? talk.rec.level * 3 : 0);
-        r.rect(Math.round(cx + Math.cos(a) * rr - 0.5), Math.round(cy + Math.sin(a) * rr - 0.5), 1, 1, '#E8457A');
-      }
-    }
+    if (tb) drawTalkRing(r, tb.x + 11, tb.y + 11, talk, this.time);
     const g = this.gearRect(safe);
     r.bmp(bitmap('icon.gear', ICONS.gear), g.x, g.y);
     // сытость сердечком и денежки кружочками, без цифр

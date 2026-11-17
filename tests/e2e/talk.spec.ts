@@ -208,6 +208,32 @@ test('разговор: «приготовь» — Пушок по-настоя�
   expect(s.basket).toEqual({ apple: 2 });
 });
 
+test('разговор: в музыкальной комнате — Пушок слушает, знает про пианино и поет по просьбе', async ({ page, browserName }, info) => {
+  test.skip(browserName !== 'chromium');
+  const m: Mock = { talks: [] };
+  await mockServer(page, m);
+  await withTalkSave(page, { serverUrl: SERVER, code: 'c', notebook: { stories: [] } });
+  await tap(page, 'btn:talk');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await tap(page, 'btn:home');
+  await tap(page, 'btn:music');
+  await expect.poll(async () => (await talkState(page)).place).toBe('music');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  // сыграли на пианино — это попадет в журнал
+  await tap(page, 'key:2');
+  await tap(page, 'key:4');
+  // «спой песенку» — Пушок идет к микрофону
+  m.extra = { action: 'sing', tags: '[действие: песня]' };
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => (window as unknown as { __piki: { app: { game: { talk: { rec: { finish(): void } } } } } }).__piki.app.game.talk.rec.finish());
+  await expect.poll(async () => (await talkState(page)).busy, { timeout: 5000, intervals: [50] }).toBe('sing');
+  const sent = m.talks.at(-1) as { place: string; game: { journal: { text: string; n: number }[] } };
+  expect(sent.place).toBe('music');
+  expect(sent.game.journal[0]).toEqual({ ago: 0, text: 'играли на пианино', n: 2 });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-talk-music.png` });
+});
+
 test('разговор: эмоция из ответа — Пушок радуется в комнате разговора', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium');
   const m: Mock = { talks: [], extra: { emotion: 'joy', tags: '[эмоция: радость]' } };

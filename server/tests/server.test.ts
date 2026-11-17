@@ -164,7 +164,7 @@ describe('запрос к модели', () => {
     expect(r.reply).toBe('Прыг-прыг, хи-хи!');
     expect(r).toMatchObject({ emotion: 'laugh', action: 'trampoline', tags: '[эмоция: смех] [действие: батут]' });
     const llm = calls.find((c) => c.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] };
-    expect(llm.messages[0].content).toContain('Сейчас ты в домике');
+    expect(llm.messages[0].content).toContain('Ты сейчас в домике');
   });
 
   it('готовка из корзинки: пометка с продуктами, корзинка и блюда — в промпте', async () => {
@@ -184,6 +184,42 @@ describe('запрос к модели', () => {
     expect(sys).toContain('ГОТОВЫЕ БЛЮДА на столике: пирог 2, суп-сюрприз 1');
     expect(sys).toContain('ЧТО ТЫ УМЕЕШЬ');
     expect(sys).toContain('ВЕЖЛИВОСТЬ');
+  });
+
+  it('Пушок знает, что сейчас в игре: где стоит, что надето, день или ночь, недавние события', async () => {
+    const { d, calls } = deps();
+    await talk(d, {
+      text: 'а что ты делал?',
+      history: [],
+      place: 'home',
+      outfit: 'корона, розовая гитара',
+      game: {
+        spot: 'slide', night: true, sleeping: false, mood: 'hungry', coins: 12, butterflies: 34, stars: 5,
+        journal: [
+          { ago: 0, text: 'катался с горки', n: 3 },
+          { ago: 25, text: 'летал на облачке: поймал бабочек: 7 (это 7 денежек)', n: 1 },
+          { ago: 2000, text: 'спал в кроватке', n: 1 },
+          { ago: 5000, text: 'x'.repeat(500), n: 1 },
+        ],
+        extra: 'лишнее поле',
+      },
+    });
+    const sys = (calls.find((x) => x.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] }).messages[0].content;
+    expect(sys).toContain('- Ты сейчас в домике, стоишь у горки.');
+    expect(sys).toContain('- На тебе: корона, розовая гитара.');
+    expect(sys).toContain('- Сейчас ночь, в окне месяц.');
+    expect(sys).toContain('- Сытость: ты проголодался.');
+    expect(sys).toContain('Денежек: 12. Бабочек поймано за все время: 34. Звездочек на доске за занятия: 5.');
+    expect(sys).toContain('- только что: катался с горки (3 раза)');
+    expect(sys).toContain('- 25 мин назад: летал на облачке: поймал бабочек: 7');
+    expect(sys).toContain('- вчера: спал в кроватке');
+    expect(sys).toContain(`- давно: ${'x'.repeat(120)}\n`);
+    expect(sys).not.toContain('лишнее поле');
+    // без сводки (старая версия игры) промпт тоже собирается
+    const music = pushokSystemPrompt({ kidName: 'Тестия', notebook: { stories: [], currentStory: null, news: [], notesForParents: [] }, outfit: '', today: '2026-01-01', glossary: '', place: 'music' });
+    expect(music).toContain('- Ты сейчас в музыкальной комнате');
+    expect(music).toContain('- На тебе: ничего не надето.');
+    expect(extractCues('[действие: песня] Ля-ля!').action).toBe('sing');
   });
 
   it('тишина в режиме «слушает сам»: ни модели, ни голоса — Пушок молча слушает дальше', async () => {

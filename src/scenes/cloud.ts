@@ -3,6 +3,8 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { catchButterfly, feed, startNight, type Unlock } from '../game/rules';
+import { logEvent } from '../game/journal';
+import { wearName } from '../talk/session';
 import { dress } from '../pushok/dress';
 import { Pushok } from '../pushok/actor';
 import { CharCanvas, type SpriteDef } from '../sprites/grid';
@@ -117,6 +119,9 @@ export class CloudScene implements Scene {
   private nextButterfly = 700;
   private nextApple = rand(...C.appleEveryMs);
   private caughtColors: string[] = [];
+  /** Для журнала разговора: сколько яблочек съел и долетел ли до ночи. */
+  private applesEaten = 0;
+  private reachedNight = false;
   private toCounter: ToCounter[] = [];
   private particles = new Particles();
   private eatLeft = 0;
@@ -261,6 +266,7 @@ export class CloudScene implements Scene {
     this.drag = null;
     if (ph === 'ending') this.g.sfx.play('joy');
     if (ph === 'summary') {
+      this.reachedNight = true;
       // долетели до ночи: дома тоже наступает ночь
       this.g.store.update((s) => startNight(s, this.g.now()));
       this.g.sfx.play(this.fresh.length ? 'fanfare' : 'lullaby');
@@ -317,11 +323,24 @@ export class CloudScene implements Scene {
     this.flyers = keep;
   }
 
+  /** Ушли с облачка: в журнал разговора — как слетали. */
+  leave() {
+    const n = this.caughtColors.length;
+    const parts = [
+      n ? `поймал бабочек: ${n} (это ${n * C.coinsPerButterfly} денежек)` : 'бабочек не поймал',
+      this.applesEaten ? `съел яблочек: ${this.applesEaten}` : '',
+      this.fresh.length ? `открылись обновки: ${this.fresh.map((u) => wearName(u.kind, u.id)).join(', ')}` : '',
+      this.reachedNight ? 'долетел до заката и ночи с луной, дома тоже стала ночь' : '',
+    ].filter(Boolean);
+    this.g.store.update((s) => logEvent(s, `летал на облачке: ${parts.join('; ')}`));
+  }
+
   private onCatch(f: Flyer) {
     this.particles.burst(f.x, f.y, 6);
     if (f.kind === 'apple') {
       // пойманное яблочко Пушок сразу съедает
       this.g.sfx.play('chew');
+      this.applesEaten++;
       this.eatLeft = 900;
       this.particles.spawn('heart', this.cx + 6, this.cy - 18, 4, -12, 900);
       this.g.store.update((s) => feed(s, CONFIG.hunger.cloudApple, this.g.now()));

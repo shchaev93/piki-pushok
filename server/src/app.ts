@@ -12,6 +12,7 @@ import {
   secretarySystemPrompt,
   type Action,
   type Emotion,
+  type GameState,
   type Notebook,
 } from './prompts.ts';
 import { pcmSeconds, recognize, splitForTts, synthesize } from './speechkit.ts';
@@ -130,6 +131,28 @@ interface TalkBody {
   basket?: unknown;
   /** Готовые блюда на столике: ['soup', 'pie']. */
   dishes?: unknown;
+  /** Что сейчас в игре (где стоит, день/ночь, сытость, недавние события). */
+  game?: unknown;
+}
+
+/** Сводка игры из запроса: только известные поля, короткие строки, не больше 10 событий. */
+export function gameOf(v: unknown): GameState | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const g = v as Record<string, unknown>;
+  const n = (x: unknown) => (Number.isFinite(Number(x)) ? Math.max(0, Math.min(1e6, Math.floor(Number(x)))) : 0);
+  return {
+    spot: typeof g.spot === 'string' ? g.spot.slice(0, 20) : null,
+    night: g.night === true,
+    sleeping: g.sleeping === true,
+    mood: g.mood === 'hungry' || g.mood === 'veryHungry' ? g.mood : 'full',
+    coins: n(g.coins),
+    butterflies: n(g.butterflies),
+    stars: n(g.stars),
+    journal: arr(g.journal)
+      .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object' && typeof (e as { text?: unknown }).text === 'string')
+      .slice(0, 10)
+      .map((e) => ({ ago: n(e.ago), text: (e.text as string).replace(/\s+/g, ' ').slice(0, 120), n: Math.max(1, n(e.n)) })),
+  };
 }
 
 /** Корзинка из запроса: только известные продукты и целые количества 0..99. */
@@ -192,7 +215,8 @@ export async function talk(d: Deps, body: TalkBody) {
           outfit: str(body.outfit, 120),
           today: moscowDate(d.now()),
           glossary: d.glossary,
-          place: body.place === 'home' ? 'home' : 'talk',
+          place: body.place === 'home' || body.place === 'music' ? body.place : 'talk',
+          game: gameOf(body.game),
           basket: basketOf(body.basket),
           dishes: arr(body.dishes).filter((x): x is string => typeof x === 'string').slice(0, 20),
         }),

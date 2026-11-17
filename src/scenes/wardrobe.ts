@@ -5,6 +5,8 @@ import type { Renderer } from '../engine/renderer';
 import { Pushok, during, type Script } from '../pushok/actor';
 import { dress } from '../pushok/dress';
 import { equippedOf, toggleWear, unlockedOf, WEAR_KINDS, type WearKind } from '../game/rules';
+import { logEvent } from '../game/journal';
+import { wearName } from '../talk/session';
 import { SWEATER_ICONS } from '../sprites/sweaters';
 import { scaleDef, silhouette, type SpriteDef } from '../sprites/grid';
 import { HATS, isHatId } from '../sprites/hats';
@@ -151,7 +153,10 @@ export class WardrobeScene implements Scene {
       return;
     }
     const on = this.isOn(it);
-    this.g.store.update((s) => toggleWear(s, it.kind, it.id));
+    this.g.store.update((s) => {
+      toggleWear(s, it.kind, it.id);
+      logEvent(s, `${on ? 'с тебя сняли' : 'на тебя надели'} в гардеробе: ${wearName(it.kind, it.id)}`);
+    });
     this.dress();
     this.g.sfx.play(on ? 'pop' : 'joy');
     if (!on) this.particles.burst(PX, it.kind === 'hat' ? 48 : it.kind === 'sweater' ? 76 : 82, 7);

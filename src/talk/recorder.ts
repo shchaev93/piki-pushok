@@ -69,8 +69,16 @@ export class Recorder {
   private peak = 0;
   private frames = 0;
 
+  /** До этого момента новую фразу не начинать: звучит сама игра (пианино, батут, песенка). */
+  private holdUntil = 0;
+
   get isOpen() {
     return this.node !== null;
+  }
+
+  /** Не ловить начало речи ms миллисекунд: сейчас шумит игра, а не говорит ребенок. */
+  hold(ms: number) {
+    this.holdUntil = Math.max(this.holdUntil, performance.now() + ms);
   }
 
   /** Речь идет прямо сейчас (для анимации «слышу»). */
@@ -199,7 +207,10 @@ export class Recorder {
       this.waiting.push(copy);
       const keep = Math.ceil(10_000 / frameMs);
       if (this.waiting.length > keep) this.waiting.splice(0, this.waiting.length - keep);
-      if (loud) {
+      if (now < this.holdUntil) {
+        // играет пианино или прыгает батут: это не речь, и шум комнаты по нему не меряем
+        this.loud = 0;
+      } else if (loud) {
         this.loud++;
         if (this.loud >= START_FRAMES) {
           // началась речь: берем и то, что было чуть раньше

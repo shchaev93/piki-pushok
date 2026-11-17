@@ -1,4 +1,5 @@
 import { CONFIG, type FoodId } from '../config';
+import { FOOD_TEXT, logEvent } from '../game/journal';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
@@ -80,7 +81,9 @@ export class ShopScene implements Scene {
       this.thinkCloud = 1800;
       return;
     }
-    this.g.store.update((s) => buy(s, f));
+    this.g.store.update((s) => {
+      if (buy(s, f)) logEvent(s, `тебе купили в магазине: ${FOOD_TEXT[f]}`);
+    });
     this.g.sfx.play('coin');
     const p = this.itemPos(i);
     const n = Math.max(0, basketIcons(this.g.store.data).length - 1);

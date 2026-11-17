@@ -1,4 +1,5 @@
 import { CONFIG, type FoodId } from '../config';
+import { DISH_TEXT, FOOD_TEXT, logEvent } from '../game/journal';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
@@ -142,12 +143,14 @@ export class FeedScene implements Scene {
         const f = slot.id as FoodId;
         if (!takeFood(s, f)) return;
         feed(s, CONFIG.food[f].satiety, now);
+        logEvent(s, `тебя покормили за столиком: ${FOOD_TEXT[f]}`, now);
         favorite = CONFIG.food[f].favorite;
       } else {
         const i = s.dishes.findIndex((d) => d.dish === slot.id);
         if (i < 0) return;
         const [d] = s.dishes.splice(i, 1);
         feed(s, d.satiety, now);
+        logEvent(s, `ты съел за столиком: ${DISH_TEXT[d.dish] ?? 'блюдо'}`, now);
         favorite = true; // блюда тоже очень радуют
       }
     });

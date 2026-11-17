@@ -3,10 +3,13 @@ import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import { dress } from '../pushok/dress';
 import { during, Pushok, type Script } from '../pushok/actor';
-import { MUSIC_SPRITES } from '../sprites/items';
+import { MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
+import { emotionScript } from '../pushok/emotion';
+import { logEvent } from '../game/journal';
+import type { Cue } from '../talk/session';
 import { Particles } from './particles';
 import type { Game, Scene } from './scene';
-import { BTN, drawHomeButton, homeButton } from './ui';
+import { BTN, drawButton, drawHomeButton, drawTalkRing, homeButton } from './ui';
 
 // Музыкальная комната: пианино с крупными радужными клавишами, барабан,
 // тарелка и микрофон. Ребенок играет, Пушок пританцовывает, а у микрофона
@@ -56,6 +59,34 @@ export class MusicScene implements Scene {
     dress(this.pushok, s);
     this.pushok.x = HOME_X;
     this.pushok.y = STAGE_Y;
+    // разговор продолжается и здесь: эмоции, «спой песенку», «сыграй на гитаре»
+    g.talk.onCue = (c) => this.onCue(c);
+  }
+
+  private onCue(c: Cue) {
+    if (c.action === 'sing') return this.mic();
+    if (c.action === 'guitar') return this.tapPushok();
+    if (c.action) {
+      // горка, батут, готовка — это в домике: Пушок бежит туда
+      this.g.talk.pendingCue = c;
+      this.g.go('home');
+      return;
+    }
+    if (c.emotion && !this.pushok.busy) {
+      const p = this.pushok;
+      p.run('emotion', emotionScript(p, c.emotion, (sp, x, y, vx, vy, life) => this.particles.spawn(sp, x, y, vx, vy, life), S));
+    }
+  }
+
+  /** Кнопка разговора справа сверху (видна, пока идет разговор). */
+  private talkButton(safe: Rect) {
+    return { x: Math.floor(Math.min(safe.x1, 222)) - 3 - BTN, y: Math.ceil(safe.y0) + 3 };
+  }
+
+  /** Сыграли на инструменте: в журнал разговора и чуть-чуть не слушать (это не речь). */
+  private played(what: string, holdMs = 1200) {
+    this.g.talk.rec.hold(holdMs);
+    this.g.store.update((s) => logEvent(s, what));
   }
 
   get singing() {
@@ -74,12 +105,17 @@ export class MusicScene implements Scene {
     list.push({ id: 'mic', x: MIC.x, y: MIC.y, w: 12, h: 22, onTap: () => this.mic() });
     const p = this.pushok;
     list.push({ id: 'pushok', x: p.x - 8 * S, y: p.y - 16 * S, w: 17 * S, h: 16 * S, onTap: () => this.tapPushok() });
+    if (this.g.talk.on) {
+      const t = this.talkButton(safe);
+      list.push({ id: 'btn:talk', x: t.x, y: t.y, w: BTN, h: BTN, onTap: () => this.g.go('talk') });
+    }
     return list;
   }
 
   // ---------- инструменты ----------
 
   private key(i: number) {
+    this.played('играли на пианино');
     this.g.sfx.piano(KEYS.freq[i]);
     this.pressed.set(i, 220);
     this.notesPlayed++;
@@ -88,6 +124,7 @@ export class MusicScene implements Scene {
   }
 
   private drum() {
+    this.played('стучали в барабан');
     this.g.sfx.drum();
     this.drumHit = 140;
     this.particles.burst(DRUM.x + 14, DRUM.y + 4, 4);
@@ -95,6 +132,7 @@ export class MusicScene implements Scene {
   }
 
   private cymbal() {
+    this.played('звенели тарелкой');
     this.g.sfx.cymbal();
     this.cymbalHit = 400;
     this.particles.spawn('sparkle', CYMBAL.x + 9, CYMBAL.y, 10, -12, 500);
@@ -120,6 +158,7 @@ export class MusicScene implements Scene {
     this.songsSung++;
     const step = 320;
     const ms = this.g.sfx.sing(notes, step / 1000);
+    this.played('пел песенку в микрофон', ms + 1200);
     let last = -1;
     yield* during(ms, (t) => {
       const syl = Math.floor(t / step);
@@ -141,6 +180,7 @@ export class MusicScene implements Scene {
   private tapPushok() {
     if (this.pushok.busy) return;
     if (this.pushok.guitar) {
+      this.played('играл на гитаре', 2500);
       this.g.sfx.melody(this.pushok.guitar);
       this.pushok.run('music', this.guitarScript());
     } else {
@@ -165,6 +205,11 @@ export class MusicScene implements Scene {
     this.time += dt;
     this.pushok.update(dt);
     this.particles.update(dt);
+    // идет разговор: пока Пушок говорит, у него двигается рот
+    const talk = this.g.talk;
+    if (talk.on && !this.pushok.busy) {
+      this.pushok.frame = talk.phase === 'speaking' && talk.voice.level > 0.12 ? 'eatOpen' : 'base';
+    }
     for (const [k, v] of this.pressed) {
       if (v - dt <= 0) this.pressed.delete(k);
       else this.pressed.set(k, v - dt);
@@ -227,5 +272,10 @@ export class MusicScene implements Scene {
 
     this.particles.draw(r);
     drawHomeButton(r, safe);
+    if (this.g.talk.on) {
+      const t = this.talkButton(safe);
+      drawButton(r, t, 'btn.talk', STAR_SPRITES.talk);
+      drawTalkRing(r, t.x + 11, t.y + 11, this.g.talk, this.time);
+    }
   }
 }

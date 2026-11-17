@@ -2,7 +2,8 @@ import { Sfx } from '../audio/sfx';
 import { CONFIG, type FoodId } from '../config';
 import type { Save, TalkTurn } from '../save/schema';
 import type { Game } from '../scenes/scene';
-import { api, TalkError, type Action, type Emotion, type Place, type TalkEvent } from './api';
+import { isNight, moodOf, satietyNow } from '../game/rules';
+import { api, TalkError, type Action, type Emotion, type GameState, type Place, type TalkEvent } from './api';
 import { VoicePlayer } from './player';
 import { Recorder, toBase64 } from './recorder';
 
@@ -38,6 +39,26 @@ const OUTFIT: Record<string, Record<string, string>> = {
     gold: 'золотая гитара', rainbow: 'радужная гитара',
   },
 };
+
+/** Название вещи по-русски: «корона», «розовая гитара». */
+export const wearName = (kind: 'hat' | 'sweater' | 'guitar', id: string) => OUTFIT[kind][id] ?? 'обновка';
+
+/** Сводка игры для Пушка: где он, день или ночь, сытость, денежки, недавние события. */
+export function gameState(s: Readonly<Save>, place: Place, now = Date.now()): GameState {
+  return {
+    spot: place === 'home' ? s.home.pushokAt : null,
+    night: isNight(s, now),
+    sleeping: s.home.sleeping,
+    mood: moodOf(satietyNow(s.satiety, now)),
+    coins: s.coins,
+    butterflies: s.butterfliesTotal,
+    stars: s.stars.count,
+    journal: s.journal
+      .slice(-10)
+      .reverse()
+      .map((e) => ({ ago: Math.max(0, Math.round((now - e.at) / 60_000)), text: e.text, n: e.n })),
+  };
+}
 
 export function outfitText(s: Readonly<Save>): string {
   const e = s.equipped;
@@ -129,9 +150,9 @@ export class TalkSession {
     void this.begin(gen);
   }
 
-  /** Вход в домик: если разговор идет — продолжается, после паузы — снова слушает. */
-  enterHome() {
-    this.place = 'home';
+  /** Вход в домик или музыкальную комнату: если разговор идет — продолжается, после паузы — снова слушает. */
+  enterPlace(place: 'home' | 'music') {
+    this.place = place;
     if (!this.on) {
       Sfx.usePlaybackSession();
       return;
@@ -278,6 +299,7 @@ export class TalkSession {
       quiet: !!req.quiet && !event,
       basket: s.basket,
       dishes: s.dishes.map((d) => d.dish),
+      game: gameState(s, this.place),
     });
     if (gen !== this.gen) return;
     this.failures = 0;

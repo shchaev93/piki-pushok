@@ -34,6 +34,16 @@ export interface SaveV2 {
   stars: { count: number; seen: number; log: LessonEntry[] };
   /** Голосовой разговор с Пушком. Все хранится только на этом устройстве. */
   talk: TalkState;
+  /** Что недавно было в игре (летал на облачке, катался с горки…): Пушок знает об этом в разговоре. */
+  journal: JournalEntry[];
+}
+
+export interface JournalEntry {
+  at: number;
+  /** С точки зрения Пушка: «катался с горки», «тебе купили морковку». */
+  text: string;
+  /** Сколько раз подряд (одинаковые события склеиваются). */
+  n: number;
 }
 
 export interface TalkTurn {
@@ -87,6 +97,7 @@ export function defaultSave(now: number): Save {
     night: null,
     stars: { count: 0, seen: 0, log: [] },
     talk: defaultTalk(),
+    journal: [],
   };
 }
 
@@ -209,8 +220,17 @@ export function sanitize(raw: Record<string, unknown>, now: number): Save {
     night: typeof raw.night === 'number' && Number.isFinite(raw.night) ? raw.night : null,
     stars: starsOf(raw.stars),
     talk: talkOf(raw.talk),
+    journal: Array.isArray(raw.journal)
+      ? raw.journal
+          .filter(isObj)
+          .filter((e) => typeof e.text === 'string')
+          .map((e) => ({ at: Math.min(num(e.at, now), now), text: (e.text as string).slice(0, 120), n: Math.max(1, Math.floor(num(e.n, 1))) }))
+          .slice(-JOURNAL_MAX)
+      : [],
   };
 }
+
+export const JOURNAL_MAX = 15;
 
 type Migration = (raw: Record<string, unknown>) => Record<string, unknown>;
 

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { normalizeNotebook, readGlossary } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { chat, type ChatMessage } from '../src/openrouter.ts';
-import { cleanForSpeech, extractCues, pushokSystemPrompt, secretarySystemPrompt } from '../src/prompts.ts';
+import { cleanForSpeech, extractCues, pushokSystemPrompt, secretarySystemPrompt, type GameState } from '../src/prompts.ts';
 
 type Role = 'kira' | 'pushok';
 interface Scenario {
@@ -23,6 +23,9 @@ interface Scenario {
   /** Корзинка и готовые блюда (для готовки). */
   basket?: Record<string, number>;
   dishes?: string[];
+  /** Что надето и что сейчас в игре (сводка, как ее присылает игра). */
+  outfit?: string;
+  game?: GameState;
 }
 interface Scenarios {
   storyTitle: string;
@@ -51,6 +54,9 @@ if (!cfg.openrouter.apiKey || !env.KID_NAME) {
 }
 const kidName = env.KID_NAME;
 const CAP = Number(process.argv[2] ?? 0.3);
+/** Необязательно: прогнать только сценарии, в названии которых есть эти слова (через запятую). */
+const ONLY = (process.argv[3] ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+const picked = (id: string) => !ONLY.length || ONLY.some((w) => id.includes(w));
 const seed = normalizeNotebook(JSON.parse(readFileSync(join(data, 'seed.json'), 'utf8')));
 const glossary = readGlossary(join(data, 'glossary.txt'));
 const set = JSON.parse(readFileSync(join(data, 'eval-scenarios.json'), 'utf8')) as Scenarios;
@@ -100,19 +106,20 @@ async function run(id: string, check: string, messages: ChatMessage[], maxTokens
 const toMsg = ([role, text]: [Role, string]): ChatMessage =>
   role === 'pushok' ? { role: 'assistant', content: fill(text) } : { role: 'user', content: fill(text) };
 
-for (const s of set.scenarios) {
+for (const s of set.scenarios.filter((x) => picked(x.id))) {
   const msgs: ChatMessage[] = [
     {
       role: 'system',
       content: pushokSystemPrompt({
         kidName,
         notebook: seed,
-        outfit: 'корона и кофточка в полоску',
+        outfit: s.outfit ?? 'корона и кофточка в полоску',
         today,
         glossary,
         place: s.place ?? 'talk',
         basket: s.basket ?? { seeds: 1 },
         dishes: s.dishes ?? [],
+        game: s.game,
       }),
     },
     ...(s.history ?? []).map(toMsg),
@@ -125,7 +132,7 @@ for (const s of set.scenarios) {
   });
 }
 
-for (const s of set.secretary) {
+for (const s of set.secretary.filter((x) => picked(x.id))) {
   const transcript = s.history.map(([role, text]) => `${role === 'kira' ? 'Девочка' : 'Пушок'}: ${fill(text)}`).join('\n');
   await run(
     s.id,

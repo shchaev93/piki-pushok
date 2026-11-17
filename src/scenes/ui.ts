@@ -4,6 +4,7 @@ import type { Renderer } from '../engine/renderer';
 import type { SpriteDef } from '../sprites/grid';
 import { ICONS } from '../sprites/icons';
 import { COIN, ITEM_ICONS } from '../sprites/items';
+import type { TalkSession } from '../talk/session';
 
 // Общие элементы интерфейса без текста: круглые кнопки, денежки, сердечко сытости.
 
@@ -22,6 +23,26 @@ export function drawButton(r: Renderer, b: Btn, key: string, icon: SpriteDef, wi
   const iw = icon.rows[0].length;
   const ih = icon.rows.length;
   r.sprite(key, icon, b.x + dx + Math.floor((BTN - iw) / 2), b.y + dy + Math.floor((BTN - ih) / 2));
+}
+
+/**
+ * Идет разговор: точки вокруг кнопки разговора показывают, что делает Пушок.
+ * Бегут три точки — слушает; кольцо дышит от голоса — слышит; редкие точки — говорит; пары — думает.
+ */
+export function drawTalkRing(r: Renderer, cx: number, cy: number, talk: TalkSession, time: number) {
+  const off = Math.floor(time / 110);
+  const hearing = talk.hearing;
+  for (let i = 0; i < 24; i++) {
+    let on = false;
+    if (hearing) on = true;
+    else if (talk.phase === 'listening') on = (i + off) % 24 < 3;
+    else if (talk.phase === 'speaking') on = (i + off) % 4 === 0;
+    else if (talk.phase === 'thinking' || talk.phase === 'connecting') on = (i + off) % 8 < 2;
+    if (!on) continue;
+    const a = (i / 24) * Math.PI * 2;
+    const rr = 13 + (hearing ? talk.rec.level * 3 : 0);
+    r.rect(Math.round(cx + Math.cos(a) * rr - 0.5), Math.round(cy + Math.sin(a) * rr - 0.5), 1, 1, '#E8457A');
+  }
 }
 
 /** Кнопка «домой» в левом верхнем углу безопасной зоны. */

@@ -7,9 +7,23 @@ export type TalkEvent = 'start' | 'warn' | 'end';
 /** Эмоции Пушка: модель ставит пометку, игра показывает. */
 export type Emotion = 'joy' | 'laugh' | 'surprise' | 'sad' | 'think' | 'love' | 'sleepy';
 /** Действия в домике по просьбе ребенка. */
-export type Action = 'slide' | 'trampoline' | 'climber' | 'rope' | 'bath' | 'toilet' | 'table' | 'kitchen' | 'guitar';
+export type Action = 'slide' | 'trampoline' | 'climber' | 'rope' | 'bath' | 'toilet' | 'table' | 'kitchen' | 'guitar' | 'sing';
 /** Где сейчас Пушок: от этого зависит, что он может сделать. */
-export type Place = 'talk' | 'home';
+export type Place = 'talk' | 'home' | 'music';
+
+/** Что сейчас в игре: Пушок знает это в разговоре (где он, что надето, что недавно было). */
+export interface GameState {
+  /** Где стоит в домике: 'slide', 'bed'… или null. */
+  spot: string | null;
+  night: boolean;
+  sleeping: boolean;
+  mood: 'full' | 'hungry' | 'veryHungry';
+  coins: number;
+  butterflies: number;
+  stars: number;
+  /** Недавние события, сначала свежие: сколько минут назад, что, сколько раз. */
+  journal: { ago: number; text: string; n: number }[];
+}
 
 export interface TalkReply {
   heard: string;
@@ -68,7 +82,7 @@ const toServer = (h: TalkTurn[]) => h.map(({ role, text, tags }) => ({ role, tex
 export const api = {
   talk: (
     c: ServerConf,
-    req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean; basket: Partial<Record<FoodId, number>>; dishes: string[] },
+    req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean; basket: Partial<Record<FoodId, number>>; dishes: string[]; game: GameState },
   ) => call<TalkReply>(c, '/talk', { ...req, history: toServer(req.history.slice(-24)) }),
   notebook: (c: ServerConf, notebook: unknown, history: TalkTurn[]) =>
     call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: history.map(({ role, text }) => ({ role, text })) }, 60000),

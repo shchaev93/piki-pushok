@@ -117,10 +117,10 @@ export class App {
     this.scene.leave?.();
     this.scene = this.make(id);
     this.fade = FADE_MS;
-    // разговор идет в комнате «Разговор» и в домике, в остальных комнатах — пауза
+    // разговор идет в комнате «Разговор», в домике и в музыкальной комнате, в остальных — пауза
     const talk = this.game.talk;
     if (id === 'talk') talk.enterRoom();
-    else if (id === 'home') talk.enterHome();
+    else if (id === 'home' || id === 'music') talk.enterPlace(id);
     else talk.suspend();
     this.resize();
   }

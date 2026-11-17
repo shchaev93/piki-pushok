@@ -1,4 +1,5 @@
 import { CONFIG, type FoodId } from '../config';
+import { DISH_TEXT, FOOD_TEXT, logEvent } from '../game/journal';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
@@ -198,6 +199,7 @@ export class KitchenScene implements Scene {
     this.g.store.update((s) => {
       for (const f of ingredients) takeFood(s, f);
       s.dishes.push(dish);
+      logEvent(s, `на большой кухне вместе сварили ${DISH_TEXT[dish.dish] ?? 'блюдо'} из: ${ingredients.map((f) => FOOD_TEXT[f]).join(', ')}`);
     });
     this.inPot = [];
     this.stir = null;

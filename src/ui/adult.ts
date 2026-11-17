@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import { rateLesson, restartStars, starsGoalReached, undoLesson, type LessonRating } from '../game/rules';
+import { logEvent } from '../game/journal';
 import type { Sfx } from '../audio/sfx';
 import type { PersistState, Store } from '../save/store';
 import { isStandalone } from './platform';
@@ -94,7 +95,10 @@ export function createAdultPanel(o: Opts): AdultPanel {
     );
   };
   const rate = (r: LessonRating, msg: string) => {
-    o.store.update((s) => rateLesson(s, r, Date.now()));
+    o.store.update((s) => {
+      rateLesson(s, r, Date.now());
+      if (r === 1) logEvent(s, 'за старательное занятие появилась новая звездочка на доске');
+    });
     starsChanged = true;
     starsNote.textContent = msg;
     renderStars();
