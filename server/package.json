@@ -1,0 +1,13 @@
+{
+  "name": "pushok-server",
+  "private": true,
+  "type": "module",
+  "description": "Сервер голосового разговора с Пушком: SpeechKit + модель через OpenRouter. Без зависимостей, Node 24 запускает TypeScript напрямую.",
+  "scripts": {
+    "start": "node src/index.ts",
+    "eval": "node scripts/eval.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

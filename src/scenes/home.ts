@@ -9,7 +9,7 @@ import type { Store } from '../save/store';
 import type { Game, Scene } from './scene';
 import { StarBoard } from './star-board';
 import { isNight, moodOf, morning, satietyNow, unseenUnlocks } from '../game/rules';
-import { ITEM_ICONS, MUSIC_SPRITES } from '../sprites/items';
+import { ITEM_ICONS, MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
 import { drawCoins, drawSatiety } from './ui';
 import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } from '../sprites/home-objects';
 import { ICONS } from '../sprites/icons';
@@ -52,7 +52,7 @@ interface Particle {
   max: number;
 }
 
-type UiButton = 'cloud' | 'wardrobe' | 'basket' | 'music';
+type UiButton = 'talk' | 'cloud' | 'wardrobe' | 'basket' | 'music';
 
 export class HomeScene implements Scene {
   readonly id = 'home' as const;
@@ -240,7 +240,11 @@ export class HomeScene implements Scene {
   }
 
   private buttonRects(safe: { x1: number; y0: number }) {
-    const ids: UiButton[] = ['cloud', 'wardrobe', 'basket', 'music'];
+    // кнопка разговора появляется, когда родители его включили и настроили сервер
+    const t = this.store.data.talk;
+    const ids: UiButton[] = t.enabled && t.serverUrl && t.code
+      ? ['talk', 'cloud', 'wardrobe', 'basket', 'music']
+      : ['cloud', 'wardrobe', 'basket', 'music'];
     const right = Math.floor(Math.min(safe.x1, CONFIG.scene.width + 40)) - 3;
     return ids.map((id, i) => ({ id, x: right - (ids.length - i) * 25 + 3, y: Math.ceil(safe.y0) + 3 }));
   }
@@ -289,7 +293,7 @@ export class HomeScene implements Scene {
 
   private tapButton(id: UiButton) {
     this.sfx.play('tap');
-    const to = { cloud: 'cloud', basket: 'shop', wardrobe: 'wardrobe', music: 'music' } as const;
+    const to = { talk: 'talk', cloud: 'cloud', basket: 'shop', wardrobe: 'wardrobe', music: 'music' } as const;
     if (this.sleeping) {
       // спит, а мы уходим в другую комнату: сначала просыпается и вылезает из кроватки
       this.pushok.run('waking', this.wakeThenGo(to[id]));
@@ -299,7 +303,7 @@ export class HomeScene implements Scene {
     this.g.go(to[id]);
   }
 
-  private *wakeThenGo(to: 'cloud' | 'shop' | 'wardrobe' | 'music'): Script {
+  private *wakeThenGo(to: 'talk' | 'cloud' | 'shop' | 'wardrobe' | 'music'): Script {
     yield* this.wakeScript();
     this.g.go(to);
   }
@@ -633,7 +637,7 @@ export class HomeScene implements Scene {
   }
 
   private drawUi(r: Renderer, safe: { x0: number; y0: number; x1: number; y1: number }) {
-    const icons: Record<UiButton, SpriteDef> = { cloud: ICONS.cloud, wardrobe: ICONS.wardrobe, basket: ICONS.basket, music: MUSIC_SPRITES.note };
+    const icons: Record<UiButton, SpriteDef> = { talk: STAR_SPRITES.talk, cloud: ICONS.cloud, wardrobe: ICONS.wardrobe, basket: ICONS.basket, music: MUSIC_SPRITES.note };
     for (const b of this.buttonRects(safe)) {
       const wl = this.wiggle[b.id];
       const dx = wl ? Math.round(Math.sin(wl / 40) * 1.5) : 0;
@@ -647,7 +651,7 @@ export class HomeScene implements Scene {
     r.bmp(bitmap('icon.gear', ICONS.gear), g.x, g.y);
     // сытость сердечком и денежки кружочками, без цифр
     drawSatiety(r, g.x + 18, g.y, this.satiety());
-    drawCoins(r, g.x + 35, g.y + 1, this.store.data.coins, 10, 30);
+    drawCoins(r, g.x + 35, g.y + 1, this.store.data.coins, 6, 30);
     if (unseenUnlocks(this.store.data).length) {
       // в гардеробе обновка: искорка над кнопкой шкафа
       const w = this.buttonRects(safe).find((b) => b.id === 'wardrobe')!;

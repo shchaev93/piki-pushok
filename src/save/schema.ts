@@ -32,6 +32,29 @@ export interface SaveV2 {
   night: number | null;
   /** Звезды за занятия: ставят родители. seen = сколько звезд ребенок уже видел. */
   stars: { count: number; seen: number; log: LessonEntry[] };
+  /** Голосовой разговор с Пушком. Все хранится только на этом устройстве. */
+  talk: TalkState;
+}
+
+export interface TalkTurn {
+  at: number;
+  role: 'kira' | 'pushok' | 'event';
+  text: string;
+}
+
+export interface TalkState {
+  enabled: boolean;
+  /** Адрес сервера и код доступа: вводят родители, в коде игры их нет. */
+  serverUrl: string;
+  code: string;
+  /** Учет минут: дата (местная) и сколько потрачено сегодня, плюс подаренные родителями минуты. */
+  day: string;
+  usedMs: number;
+  extraMs: number;
+  warned: boolean;
+  /** Тетрадка Пушка (сказки, новости, записки для родителей). Форму проверяет сервер. */
+  notebook: unknown;
+  history: TalkTurn[];
 }
 
 /** Запись о занятии: delta = оценка (+1/0/-1), applied = насколько реально изменился счет. */
@@ -61,8 +84,22 @@ export function defaultSave(now: number): Save {
     home: { pushokAt: null, sleeping: false },
     night: null,
     stars: { count: 0, seen: 0, log: [] },
+    talk: defaultTalk(),
   };
 }
+
+export const defaultTalk = (): TalkState => ({
+  // режим включен сразу: награда за пять звезд уже получена
+  enabled: true,
+  serverUrl: '',
+  code: '',
+  day: '',
+  usedMs: 0,
+  extraMs: 0,
+  warned: false,
+  notebook: null,
+  history: [],
+});
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -89,6 +126,31 @@ function dishesOf(v: unknown): Dish[] {
     .filter(isObj)
     .filter((d) => typeof d.dish === 'string' && typeof d.satiety === 'number' && Number.isFinite(d.satiety))
     .map((d) => ({ dish: d.dish as string, satiety: Math.max(0, Math.round(d.satiety as number)) }));
+}
+
+const HISTORY_MAX = 400;
+
+function talkOf(v: unknown): TalkState {
+  const t = isObj(v) ? v : {};
+  const d = defaultTalk();
+  const history = Array.isArray(t.history)
+    ? t.history
+        .filter(isObj)
+        .filter((h) => typeof h.text === 'string' && ['kira', 'pushok', 'event'].includes(h.role as string))
+        .map((h) => ({ at: num(h.at, 0), role: h.role as TalkTurn['role'], text: (h.text as string).slice(0, 2000) }))
+        .slice(-HISTORY_MAX)
+    : [];
+  return {
+    enabled: typeof t.enabled === 'boolean' ? t.enabled : d.enabled,
+    serverUrl: typeof t.serverUrl === 'string' ? t.serverUrl : '',
+    code: typeof t.code === 'string' ? t.code : '',
+    day: typeof t.day === 'string' ? t.day : '',
+    usedMs: num(t.usedMs, 0),
+    extraMs: num(t.extraMs, 0),
+    warned: t.warned === true,
+    notebook: isObj(t.notebook) ? t.notebook : null,
+    history,
+  };
 }
 
 function starsOf(v: unknown): Save['stars'] {
@@ -139,6 +201,7 @@ export function sanitize(raw: Record<string, unknown>, now: number): Save {
     home: { pushokAt: strOrNull(home.pushokAt), sleeping: home.sleeping === true },
     night: typeof raw.night === 'number' && Number.isFinite(raw.night) ? raw.night : null,
     stars: starsOf(raw.stars),
+    talk: talkOf(raw.talk),
   };
 }
 

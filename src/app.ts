@@ -10,6 +10,7 @@ import { ShopScene } from './scenes/shop';
 import { WardrobeScene } from './scenes/wardrobe';
 import { KitchenScene } from './scenes/kitchen';
 import { MusicScene } from './scenes/music';
+import { TalkScene } from './scenes/talk';
 import { HomeScene } from './scenes/home';
 import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
@@ -67,6 +68,9 @@ export class App {
       pwa: () => this.pwa,
       // родители поменяли звезды: заходим в домик заново, чтобы ребенок увидел изменение
       onStarsChanged: () => this.go('home'),
+      onTalkChanged: () => {
+        if (this.scene.id === 'home') this.go('home');
+      },
     });
     this.scene = this.make('home');
     this.resize();
@@ -92,6 +96,8 @@ export class App {
         return new KitchenScene(this.game);
       case 'music':
         return new MusicScene(this.game);
+      case 'talk':
+        return new TalkScene(this.game);
       default:
         return new HomeScene(this.game);
     }
@@ -100,6 +106,7 @@ export class App {
   go(id: SceneId) {
     this.hold = null;
     this.dragging.clear();
+    this.scene.leave?.();
     this.scene = this.make(id);
     this.fade = FADE_MS;
   }

@@ -4,7 +4,7 @@ import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import type { Store } from '../save/store';
 
-export type SceneId = 'home' | 'cloud' | 'shop' | 'feed' | 'wardrobe' | 'kitchen' | 'music';
+export type SceneId = 'home' | 'cloud' | 'shop' | 'feed' | 'wardrobe' | 'kitchen' | 'music' | 'talk';
 
 /** Что сцены получают от приложения. */
 export interface Game {
@@ -30,4 +30,6 @@ export interface Scene {
   pointerDown?(x: number, y: number, id: number): boolean;
   pointerMove?(x: number, y: number, id: number): void;
   pointerUp?(x: number, y: number, id: number): void;
+  /** Уход с экрана: остановить звук, запись, сохранить несохраненное. */
+  leave?(): void;
 }

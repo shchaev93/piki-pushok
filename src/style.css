@@ -166,7 +166,8 @@ body.gallery canvas {
   padding: 6px 10px;
   margin: 8px 0;
 }
-.panel .stars-title {
+.panel .stars-title,
+.panel .talk-title {
   font-size: 17px;
   font-weight: 600;
   margin: 4px 0;
@@ -182,4 +183,25 @@ body.gallery canvas {
 }
 .panel .history p {
   margin: 2px 0;
+}
+.panel .field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px; /* меньше 16px iOS увеличивает страницу при вводе */
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: manipulation;
+}
+.panel details summary {
+  cursor: pointer;
+  min-height: 40px;
+  line-height: 40px;
+  font-weight: 600;
 }

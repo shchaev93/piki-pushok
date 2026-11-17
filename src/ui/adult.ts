@@ -4,6 +4,7 @@ import type { Sfx } from '../audio/sfx';
 import type { PersistState, Store } from '../save/store';
 import { isStandalone } from './platform';
 import type { Pwa } from '../pwa';
+import { createTalkSection } from './talk-panel';
 
 // Панель для взрослых. Открывается только удержанием шестеренки 3 секунды.
 // Здесь текст допустим: ребенок сюда не попадает.
@@ -22,6 +23,8 @@ interface Opts {
   pwa: () => Pwa | null;
   /** Звезды поменялись: домик покажет ребенку изменение. */
   onStarsChanged: () => void;
+  /** Разговор включили или выключили: домик перерисует кнопки. */
+  onTalkChanged: () => void;
 }
 
 const persistText: Record<PersistState, string> = {
@@ -115,7 +118,8 @@ export function createAdultPanel(o: Opts): AdultPanel {
     renderStars();
   });
 
-  panel.append(head, stars, row, resetNote, update, info);
+  const talk = createTalkSection(o.store);
+  panel.append(head, stars, talk.root, row, resetNote, update, info);
 
   // Обновление игры вручную: если на сайте новая версия, игра перезагрузится в нее.
   update.addEventListener('click', async () => {
@@ -202,7 +206,7 @@ export function createAdultPanel(o: Opts): AdultPanel {
     if (starsChanged) {
       starsChanged = false;
       o.onStarsChanged();
-    }
+    } else if (talk.takeChanged()) o.onTalkChanged();
     root.hidden = true;
     stopHold();
   });
@@ -211,6 +215,7 @@ export function createAdultPanel(o: Opts): AdultPanel {
     open() {
       starsNote.textContent = '';
       renderStars();
+      talk.render();
       update.textContent = 'Проверить обновление';
       renderSound();
       renderInfo();

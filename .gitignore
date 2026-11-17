@@ -9,3 +9,6 @@ playwright-report/
 TZ-piki-pushok.md
 public/icons/
 public/favicon.png
+# Сервер Пушка: ключи, тетрадка с настоящими сказками и отчеты прогонов — только локально и на сервере
+server/.env
+server/data/
