@@ -15,6 +15,9 @@ import { HOME_SPRITES, SMALL_SPRITES, type HomeSpriteId, type SmallSpriteId } fr
 import { ICONS } from '../sprites/icons';
 import type { SpriteDef } from '../sprites/grid';
 import { bitmap } from '../sprites/render';
+import { emotionScript } from '../pushok/emotion';
+import type { Action } from '../talk/api';
+import type { Cue } from '../talk/session';
 
 /** Предмет домика: где стоит, где Пушок отдыхает после занятия. */
 interface HomeObject {
@@ -88,6 +91,102 @@ export class HomeScene implements Scene {
     this.board = new StarBoard(g, () => {
       if (!this.pushok.busy) this.pushok.run(null, this.pushok.joy(2, 4));
     });
+    // разговор продолжается в домике: эмоции и действия из ответов Пушка
+    g.talk.onCue = (c) => this.onCue(c);
+    const action = g.talk.takeAction();
+    if (action) this.doAction(action);
+  }
+
+  // ---------- разговор ----------
+
+  private onCue(c: Cue) {
+    if (c.action) return this.doAction(c.action);
+    if (c.emotion && !this.pushok.busy) {
+      this.pushok.run('emotion', emotionScript(this.pushok, c.emotion, (s, x, y, vx, vy, life) => this.spawn(s, x, y, vx, vy, life)));
+    }
+  }
+
+  /** Кира попросила: покатайся, попрыгай, приготовь… Все понарошку и бесплатно, как по касанию. */
+  doAction(a: Action) {
+    const talk = this.g.talk;
+    let script: Script;
+    switch (a) {
+      case 'table':
+        script = this.pretendEat();
+        break;
+      case 'kitchen':
+        script = this.pretendCook();
+        break;
+      case 'guitar':
+        script = this.playOrSing();
+        break;
+      default: {
+        const o = HOME_OBJECTS.find((x) => x.id === a)!;
+        this.store.update((s) => (s.home.pushokAt = o.id));
+        this.ropeAngle = null;
+        script = this.activity(o);
+      }
+    }
+    const self = this;
+    const wasSleeping = this.sleeping;
+    talk.actionRunning = true;
+    this.pushok.run(a, (function* (): Script {
+      try {
+        if (wasSleeping) yield* self.wakeScript();
+        yield* script;
+      } finally {
+        self.ropeAngle = null;
+        talk.actionRunning = false;
+      }
+    })());
+  }
+
+  /** «Покушай»: сидит за столиком и жует (без крупного плана кормления). */
+  private *pretendEat(): Script {
+    const p = this.pushok;
+    const o = HOME_OBJECTS.find((x) => x.id === 'table')!;
+    this.store.update((s) => (s.home.pushokAt = 'table'));
+    p.sortY = 97.9;
+    yield* p.hopTo(o.rest.x, o.rest.y);
+    let n = 0;
+    yield* during(2000, (t) => {
+      p.frame = Math.floor(t / 220) % 2 ? 'eatMunch' : 'eatOpen';
+      if (t >= n) {
+        n += 500;
+        this.sfx.play('chew');
+        this.spawn('crumb', p.x + (Math.random() - 0.5) * 10, p.y - 6, (Math.random() - 0.5) * 10, 6, 600);
+      }
+    });
+    this.sfx.play('joy');
+    yield* p.joy(1, 3);
+  }
+
+  /** «Приготовь»: понарошку мешает в кастрюльке у плиты, идет пар. Продукты не тратятся. */
+  private *pretendCook(): Script {
+    const p = this.pushok;
+    const o = HOME_OBJECTS.find((x) => x.id === 'kitchen')!;
+    this.store.update((s) => (s.home.pushokAt = 'kitchen'));
+    yield* p.hopTo(o.rest.x, o.rest.y);
+    let n = 0;
+    yield* during(2600, (t) => {
+      const odd = Math.floor(t / 300) % 2;
+      p.frame = odd ? 'sniff' : 'happy1';
+      p.lift = odd ? -1 : 0;
+      if (t >= n) {
+        n += 380;
+        this.spawn('steam', 162 + Math.random() * 12, 26, (Math.random() - 0.5) * 6, -9, 900);
+      }
+      if (Math.floor(t / 900) !== Math.floor((t - 16) / 900)) this.sfx.play('stir');
+    });
+    this.spawn('heart', p.x, p.y - 18, 0, -12, 900);
+    this.sfx.play('joy');
+    yield* p.joy(1, 3);
+  }
+
+  /** «Сыграй»: с гитарой — мелодия, без гитары — пританцовывает с нотками. */
+  private *playOrSing(): Script {
+    if (this.pushok.guitar) this.sfx.melody(this.pushok.guitar);
+    yield* this.playGuitar();
   }
 
   /** Доска звезд за занятия на стене. */
@@ -193,6 +292,11 @@ export class HomeScene implements Scene {
       }
     }
     this.pushok.update(dt);
+    // идет разговор: пока Пушок говорит, у него двигается рот
+    const talk = this.g.talk;
+    if (talk.on && !this.pushok.busy) {
+      this.pushok.frame = talk.phase === 'speaking' && talk.voice.level > 0.12 ? 'eatOpen' : 'base';
+    }
     for (const p of this.particles) {
       p.life -= dt;
       p.x += (p.vx * dt) / 1000;
@@ -274,6 +378,8 @@ export class HomeScene implements Scene {
   }
 
   private tapPushok() {
+    // разговор задремал (долго молчали): касание — снова слушает
+    if (this.g.talk.on && this.g.talk.phase === 'idle') this.g.talk.resume();
     if (this.sleeping) {
       this.pushok.run(null, this.wakeScript());
       return;
@@ -294,6 +400,8 @@ export class HomeScene implements Scene {
   private tapButton(id: UiButton) {
     this.sfx.play('tap');
     const to = { talk: 'talk', cloud: 'cloud', basket: 'shop', wardrobe: 'wardrobe', music: 'music' } as const;
+    // в разговор: звук и микрофон на iPhone будятся только в касании, а Пушок может сначала просыпаться
+    if (id === 'talk') this.g.talk.prime();
     if (this.sleeping) {
       // спит, а мы уходим в другую комнату: сначала просыпается и вылезает из кроватки
       this.pushok.run('waking', this.wakeThenGo(to[id]));
@@ -646,6 +754,26 @@ export class HomeScene implements Scene {
       const iw = ic.rows[0].length;
       const ih = ic.rows.length;
       r.sprite(`btn.${b.id}`, ic, b.x + dx + Math.floor((22 - iw) / 2), b.y + Math.floor((22 - ih) / 2));
+    }
+    // идет разговор: вокруг кнопки разговора видно, слушает Пушок, думает или говорит
+    const talk = this.g.talk;
+    const tb = talk.on ? this.buttonRects(safe).find((b) => b.id === 'talk') : undefined;
+    if (tb) {
+      const cx = tb.x + 11;
+      const cy = tb.y + 11;
+      const off = Math.floor(this.time / 110);
+      const hearing = talk.hearing;
+      for (let i = 0; i < 24; i++) {
+        let on = false;
+        if (hearing) on = true;
+        else if (talk.phase === 'listening') on = (i + off) % 24 < 3;
+        else if (talk.phase === 'speaking') on = (i + off) % 4 === 0;
+        else if (talk.phase === 'thinking' || talk.phase === 'connecting') on = (i + off) % 8 < 2;
+        if (!on) continue;
+        const a = (i / 24) * Math.PI * 2;
+        const rr = 13 + (hearing ? talk.rec.level * 3 : 0);
+        r.rect(Math.round(cx + Math.cos(a) * rr - 0.5), Math.round(cy + Math.sin(a) * rr - 0.5), 1, 1, '#E8457A');
+      }
     }
     const g = this.gearRect(safe);
     r.bmp(bitmap('icon.gear', ICONS.gear), g.x, g.y);

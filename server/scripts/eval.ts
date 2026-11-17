@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { normalizeNotebook, readGlossary } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { chat, type ChatMessage } from '../src/openrouter.ts';
-import { cleanForSpeech, pushokSystemPrompt, secretarySystemPrompt } from '../src/prompts.ts';
+import { cleanForSpeech, extractCues, pushokSystemPrompt, secretarySystemPrompt } from '../src/prompts.ts';
 
 type Role = 'kira' | 'pushok';
 interface Scenario {
@@ -18,6 +18,8 @@ interface Scenario {
   history?: [Role, string][];
   say?: string;
   event?: 'start' | 'warn' | 'end';
+  /** Где Пушок: в комнате разговора (по умолчанию) или в домике. */
+  place?: 'talk' | 'home';
 }
 interface Scenarios {
   storyTitle: string;
@@ -97,11 +99,18 @@ const toMsg = ([role, text]: [Role, string]): ChatMessage =>
 
 for (const s of set.scenarios) {
   const msgs: ChatMessage[] = [
-    { role: 'system', content: pushokSystemPrompt({ kidName, notebook: seed, outfit: 'корона и кофточка в полоску', today, glossary }) },
+    {
+      role: 'system',
+      content: pushokSystemPrompt({ kidName, notebook: seed, outfit: 'корона и кофточка в полоску', today, glossary, place: s.place ?? 'talk' }),
+    },
     ...(s.history ?? []).map(toMsg),
     { role: 'user', content: [s.event ? EVENT[s.event] : '', s.say ? fill(s.say) : ''].filter(Boolean).join('\n') },
   ];
-  await run(s.id, s.check, msgs, cfg.openrouter.maxTokens, (t) => cleanForSpeech(t) || '(ПУСТО: размышления съели весь лимит)');
+  await run(s.id, s.check, msgs, cfg.openrouter.maxTokens, (t) => {
+    const c = extractCues(t);
+    const said = cleanForSpeech(c.text) || '(ПУСТО: размышления съели весь лимит)';
+    return `${c.tags ? `**${c.tags}** ` : ''}${said}`;
+  });
 }
 
 for (const s of set.secretary) {

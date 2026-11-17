@@ -4,7 +4,16 @@ import { join } from 'node:path';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from './budget.ts';
 import type { Config } from './config.ts';
 import { chat, type ChatMessage } from './openrouter.ts';
-import { cleanForSpeech, emptyNotebook, pushokSystemPrompt, secretarySystemPrompt, type Notebook } from './prompts.ts';
+import {
+  cleanForSpeech,
+  emptyNotebook,
+  extractCues,
+  pushokSystemPrompt,
+  secretarySystemPrompt,
+  type Action,
+  type Emotion,
+  type Notebook,
+} from './prompts.ts';
 import { pcmSeconds, recognize, splitForTts, synthesize } from './speechkit.ts';
 
 // HTTP-сервер Пушка. Хранит только счетчики расходов; разговоры и тетрадка живут на телефоне.
@@ -113,6 +122,10 @@ interface TalkBody {
   history?: Turn[];
   notebook?: unknown;
   outfit?: string;
+  /** Где Пушок в игре: 'talk' (комната разговора) или 'home' (домик). */
+  place?: string;
+  /** Фраза поймана по громкости: если слов не распознано, молча слушать дальше (без голоса и без затрат на него). */
+  quiet?: boolean;
 }
 
 export async function talk(d: Deps, body: TalkBody) {
@@ -139,6 +152,13 @@ export async function talk(d: Deps, body: TalkBody) {
   let reply: string;
   let costUsd = 0;
   let usage = { prompt: 0, completion: 0, reasoning: 0 };
+  let cues: { emotion: Emotion | null; action: Action | null; tags: string } = { emotion: null, action: null, tags: '' };
+  if (!heard && !body.event && body.quiet) {
+    // шум без слов в режиме «слушает сам»: Пушок молчит и слушает дальше
+    budget.countRequest();
+    d.log?.(`talk тишина: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), слов нет; распознавание ${t1 - t0} мс`);
+    return { heard: '', reply: '', audio: [] as string[], costUsd: 0, usage, ...cues };
+  }
   if (!heard && !body.event) {
     reply = NOT_HEARD;
   } else {
@@ -151,6 +171,7 @@ export async function talk(d: Deps, body: TalkBody) {
           outfit: str(body.outfit, 120),
           today: moscowDate(d.now()),
           glossary: d.glossary,
+          place: body.place === 'home' ? 'home' : 'talk',
         }),
       },
       ...historyMessages(history),
@@ -161,7 +182,9 @@ export async function talk(d: Deps, body: TalkBody) {
     budget.addLlm(r.costUsd);
     costUsd = r.costUsd;
     usage = r.usage;
-    reply = cleanForSpeech(r.text) || FALLBACK;
+    const c = extractCues(r.text);
+    cues = { emotion: c.emotion, action: c.action, tags: c.tags };
+    reply = cleanForSpeech(c.text) || FALLBACK;
   }
   const t2 = Date.now();
 
@@ -172,9 +195,10 @@ export async function talk(d: Deps, body: TalkBody) {
   budget.countRequest();
   d.log?.(
     `talk ${body.event ?? '-'}: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), распознано ${heard.length} симв., ` +
-      `ответ ${reply.length} симв.; распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс`,
+      `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.action ?? '-'}` : ''}; ` +
+      `распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс`,
   );
-  return { heard, reply, audio, costUsd, usage };
+  return { heard, reply, audio, costUsd, usage, ...cues };
 }
 
 /** Самая громкая точка записи 0..1 (тишина от сломанного микрофона дает 0). */

@@ -175,6 +175,12 @@ export const SMALL_SPRITES = {
   note: def(['..OO', '..OO', '..O.', 'OOO.', 'OOO.']),
   steam: def(['.WW.', 'WWWW', '.WW.']),
   crumb: def(['YM', 'MY']),
+  /** Удивление: восклицательный знак над головой. */
+  bang: def(['OOO', 'OYO', 'OYO', 'OYO', 'OOO', '...', 'OOO', 'OYO', 'OOO']),
+  /** Грусть: слезинка. */
+  tear: def(['.O.', 'OCO', 'OCO', '.O.']),
+  /** Смех: «ХА». */
+  ha: def(['J...J..JJ.', '.J.J..J..J', '..J...JJJJ', '.J.J..J..J', 'J...J.J..J']),
 } as const;
 
 export type HomeSpriteId = keyof typeof HOME_SPRITES;

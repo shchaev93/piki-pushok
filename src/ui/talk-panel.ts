@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
 import type { Store } from '../save/store';
-import { localDay, talkLeftMs } from '../scenes/talk';
+import { localDay, talkLeftMs } from '../talk/session';
 import { api } from '../talk/api';
 import { micStats } from '../talk/recorder';
 
@@ -39,7 +39,7 @@ export function createTalkSection(store: Store) {
   code.spellcheck = false;
   code.setAttribute('autocorrect', 'off');
   const check = el('button', 'btn', 'Сохранить и проверить связь');
-  const checkNote = el('p', 'note');
+  const checkNote = el('p', 'note check-note');
   const micNote = el('p', 'note mic-note');
   const notes = el('details', 'info');
   const book = el('details', 'info');

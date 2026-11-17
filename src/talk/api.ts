@@ -3,11 +3,22 @@ import type { TalkTurn } from '../save/schema';
 // Связь с сервером Пушка. Адрес и код доступа вводят родители в панели взрослых.
 
 export type TalkEvent = 'start' | 'warn' | 'end';
+/** Эмоции Пушка: модель ставит пометку, игра показывает. */
+export type Emotion = 'joy' | 'laugh' | 'surprise' | 'sad' | 'think' | 'love' | 'sleepy';
+/** Действия в домике по просьбе ребенка. */
+export type Action = 'slide' | 'trampoline' | 'climber' | 'rope' | 'bath' | 'toilet' | 'table' | 'kitchen' | 'guitar';
+/** Где сейчас Пушок: от этого зависит, что он может сделать. */
+export type Place = 'talk' | 'home';
 
 export interface TalkReply {
   heard: string;
+  /** Пустой ответ: фраза оказалась шумом, Пушок молча слушает дальше. */
   reply: string;
   audio: string[];
+  emotion?: Emotion | null;
+  action?: Action | null;
+  /** Пометки в виде текста — для истории (модель видит, что показывала). */
+  tags?: string;
 }
 
 export class TalkError extends Error {
@@ -49,13 +60,15 @@ async function call<T>(conf: ServerConf, path: string, body?: unknown, timeoutMs
   return (await res.json()) as T;
 }
 
-const toServer = (h: TalkTurn[]) => h.map(({ role, text }) => ({ role, text }));
+const toServer = (h: TalkTurn[]) => h.map(({ role, text, tags }) => ({ role, text: tags ? `${tags} ${text}` : text }));
 
 export const api = {
-  talk: (c: ServerConf, req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string }) =>
-    call<TalkReply>(c, '/talk', { ...req, history: toServer(req.history.slice(-24)) }),
+  talk: (
+    c: ServerConf,
+    req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean },
+  ) => call<TalkReply>(c, '/talk', { ...req, history: toServer(req.history.slice(-24)) }),
   notebook: (c: ServerConf, notebook: unknown, history: TalkTurn[]) =>
-    call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: toServer(history) }, 60000),
+    call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: history.map(({ role, text }) => ({ role, text })) }, 60000),
   seed: (c: ServerConf) => call<{ notebook: unknown }>(c, '/seed'),
   health: (c: ServerConf) =>
     call<{ ok: boolean; model?: string; provider?: string; budget?: { llmUsd: number; voiceRub: number; limits: { dailyLlmUsd: number; dailyVoiceRub: number } } }>(

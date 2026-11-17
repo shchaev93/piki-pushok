@@ -73,6 +73,12 @@ export class Pushok {
 
   /** Запускает новый сценарий, прерывая текущий (ребенок может тапать что угодно). */
   run(busy: string | null, script: Script) {
+    // прерванный сценарий закрываем: его finally убирает за собой (например, «действие закончилось»)
+    try {
+      this.script?.return(undefined);
+    } catch {
+      /* сценарий сам себя прерывает изнутри — закрывать нечего */
+    }
     this.resetPose();
     this.busy = busy;
     this.script = script;

@@ -14,6 +14,9 @@ interface Particle {
 export class Particles {
   private list: Particle[] = [];
 
+  /** scale — во сколько раз крупнее рисовать значки (для крупного Пушка в комнате разговора). */
+  constructor(private scale = 1) {}
+
   spawn(sprite: SmallSpriteId, x: number, y: number, vx: number, vy: number, life: number) {
     this.list.push({ sprite, x, y, vx, vy, life });
   }
@@ -39,7 +42,7 @@ export class Particles {
   draw(r: Renderer) {
     for (const q of this.list) {
       if (q.life < 200 && Math.floor(q.life / 50) % 2) continue;
-      r.sprite(`small.${q.sprite}`, SMALL_SPRITES[q.sprite], q.x, q.y);
+      r.sprite(`small.${q.sprite}`, SMALL_SPRITES[q.sprite], q.x, q.y, this.scale);
     }
   }
 }

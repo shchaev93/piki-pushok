@@ -3,6 +3,7 @@ import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
 import type { Renderer } from '../engine/renderer';
 import type { Store } from '../save/store';
+import type { TalkSession } from '../talk/session';
 
 export type SceneId = 'home' | 'cloud' | 'shop' | 'feed' | 'wardrobe' | 'kitchen' | 'music' | 'talk';
 
@@ -15,10 +16,14 @@ export interface Game {
   now(): number;
   /** Минимальная цель касания в логических px (для своих хит-тестов при перетаскивании). */
   minTarget(): number;
+  /** Разговор с Пушком: один на всю игру, продолжается в домике. */
+  talk: TalkSession;
 }
 
 export interface Scene {
   readonly id: SceneId;
+  /** Сцена умеет стоять вертикально (иначе в вертикальном положении — экран «поверни»). */
+  readonly portrait?: boolean;
   update(dt: number): void;
   draw(r: Renderer): void;
   /** Кнопки и предметы, на которые нажимают. */

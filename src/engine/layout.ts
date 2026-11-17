@@ -43,7 +43,7 @@ export function computeLayout(
   cssH: number,
   dpr: number,
   insets: Insets,
-  scene = CONFIG.scene,
+  scene: { width: number; height: number } = CONFIG.scene,
 ): Layout {
   const devW = Math.max(1, Math.round(cssW * dpr));
   const devH = Math.max(1, Math.round(cssH * dpr));

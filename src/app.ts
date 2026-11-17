@@ -16,6 +16,8 @@ import { drawRotate } from './scenes/rotate';
 import type { Game, Scene, SceneId } from './scenes/scene';
 import { createAdultPanel, type AdultPanel } from './ui/adult';
 import type { Pwa } from './pwa';
+import { CONFIG } from './config';
+import { TalkSession } from './talk/session';
 
 interface Hold {
   pointerId: number;
@@ -51,14 +53,20 @@ export class App {
     version: string,
   ) {
     this.renderer = new Renderer(canvas.getContext('2d', { alpha: false })!);
-    this.game = {
+    const game = {
       store,
       sfx,
-      go: (id) => this.go(id),
+      go: (id: SceneId) => this.go(id),
       openAdult: () => this.adult.open(),
       now: () => Date.now(),
       minTarget: () => this.layout.minTarget,
-    };
+    } as Game;
+    game.talk = new TalkSession(game);
+    this.game = game;
+    // свернули игру — разговор на паузе (микрофон выключен); вернулись — касание его продолжит
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.game.talk.suspend();
+    });
     this.adult = createAdultPanel({
       store,
       sfx,
@@ -109,6 +117,12 @@ export class App {
     this.scene.leave?.();
     this.scene = this.make(id);
     this.fade = FADE_MS;
+    // разговор идет в комнате «Разговор» и в домике, в остальных комнатах — пауза
+    const talk = this.game.talk;
+    if (id === 'talk') talk.enterRoom();
+    else if (id === 'home') talk.enterHome();
+    else talk.suspend();
+    this.resize();
   }
 
   private insets(): Insets {
@@ -117,8 +131,14 @@ export class App {
     return { top: n(s.paddingTop), right: n(s.paddingRight), bottom: n(s.paddingBottom), left: n(s.paddingLeft) };
   }
 
+  /** Вертикально стоит только сцена, которая это умеет (комната разговора); остальным — экран «поверни». */
+  private get vertical() {
+    return this.layout.portrait && !!this.scene.portrait;
+  }
+
   resize() {
-    this.layout = computeLayout(innerWidth, innerHeight, devicePixelRatio || 1, this.insets());
+    const size = innerHeight > innerWidth && this.scene?.portrait ? CONFIG.scenePortrait : CONFIG.scene;
+    this.layout = computeLayout(innerWidth, innerHeight, devicePixelRatio || 1, this.insets(), size);
     if (this.canvas.width !== this.layout.devW || this.canvas.height !== this.layout.devH) {
       this.canvas.width = this.layout.devW;
       this.canvas.height = this.layout.devH;
@@ -132,7 +152,7 @@ export class App {
   private down(e: PointerEvent) {
     e.preventDefault();
     this.sfx.unlock();
-    if (this.adult.isOpen || this.layout.portrait) return;
+    if (this.adult.isOpen || (this.layout.portrait && !this.vertical)) return;
     const p = cssToScene(this.layout, e.clientX, e.clientY);
     const t = hitTest(this.targets(), p.x, p.y, this.layout.minTarget);
     if (t) {
@@ -176,9 +196,10 @@ export class App {
       } else h.onProgress(p);
     }
 
+    this.game.talk.update(dt);
     const r = this.renderer;
     r.begin(this.layout);
-    if (this.layout.portrait) {
+    if (this.layout.portrait && !this.vertical) {
       this.rotatePushok.update(dt);
       drawRotate(r, this.rotatePushok, this.time);
     } else {

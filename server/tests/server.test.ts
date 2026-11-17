@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createHandler, extractJson, normalizeNotebook, pcmPeak, talk, updateNotebook, type Deps } from '../src/app.ts';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from '../src/budget.ts';
 import { loadConfig } from '../src/config.ts';
-import { cleanForSpeech, pushokSystemPrompt } from '../src/prompts.ts';
+import { cleanForSpeech, extractCues, pushokSystemPrompt } from '../src/prompts.ts';
 import { splitForTts } from '../src/speechkit.ts';
 
 // Внешние сервисы подменены: ни один тест не ходит в OpenRouter или SpeechKit и ничего не тратит.
@@ -137,6 +137,35 @@ describe('запрос к модели', () => {
     expect(lines[0]).toContain('распознано 15 симв.');
     expect(lines[0]).not.toContain('сказку');
     expect(pcmPeak(Buffer.alloc(3200))).toBe(0);
+  });
+
+  it('пометки эмоции и действия: вырезаются из голоса, уходят игре и в историю', () => {
+    const c = extractCues('[эмоция: Радость] [действие: горка] Ура, качусь с горки!');
+    expect(c).toEqual({ text: '  Ура, качусь с горки!', emotion: 'joy', action: 'slide', tags: '[эмоция: радость] [действие: горка]' });
+    expect(cleanForSpeech(c.text)).toBe('Ура, качусь с горки!');
+    // незнакомые слова — без пометки, но и вслух скобки не звучат
+    const u = extractCues('[действие: полет] [эмоция: ярость] Не получится!');
+    expect(u.emotion).toBeNull();
+    expect(u.action).toBeNull();
+    expect(cleanForSpeech(u.text)).toBe('Не получится!');
+    expect(cleanForSpeech('[что-то] Привет')).toBe('Привет');
+  });
+
+  it('ответ сервера несет эмоцию и действие; место попадает в промпт', async () => {
+    const { d, calls } = deps({}, { reply: '[эмоция: смех] [действие: батут] Прыг-прыг, хи-хи!' });
+    const r = await talk(d, { text: 'попрыгай', history: [], place: 'home' });
+    expect(r.reply).toBe('Прыг-прыг, хи-хи!');
+    expect(r).toMatchObject({ emotion: 'laugh', action: 'trampoline', tags: '[эмоция: смех] [действие: батут]' });
+    const llm = calls.find((c) => c.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] };
+    expect(llm.messages[0].content).toContain('Сейчас ты в домике');
+  });
+
+  it('тишина в режиме «слушает сам»: ни модели, ни голоса — Пушок молча слушает дальше', async () => {
+    const { d, calls } = deps({}, { heard: '' });
+    const r = await talk(d, { audio: Buffer.alloc(32000).toString('base64'), history: [], quiet: true });
+    expect(r.reply).toBe('');
+    expect(r.audio).toEqual([]);
+    expect(calls.map((c) => c.url.split('?')[0].split('/').pop())).toEqual(['stt:recognize']);
   });
 
   it('событие игры уходит модели в квадратных скобках', async () => {

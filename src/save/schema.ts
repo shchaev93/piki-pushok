@@ -40,6 +40,8 @@ export interface TalkTurn {
   at: number;
   role: 'kira' | 'pushok' | 'event';
   text: string;
+  /** Пометки эмоции и действия Пушка («[эмоция: радость]»): модель видит их в истории, вслух они не звучат. */
+  tags?: string;
 }
 
 export interface TalkState {
@@ -137,7 +139,12 @@ function talkOf(v: unknown): TalkState {
     ? t.history
         .filter(isObj)
         .filter((h) => typeof h.text === 'string' && ['kira', 'pushok', 'event'].includes(h.role as string))
-        .map((h) => ({ at: num(h.at, 0), role: h.role as TalkTurn['role'], text: (h.text as string).slice(0, 2000) }))
+        .map((h) => ({
+          at: num(h.at, 0),
+          role: h.role as TalkTurn['role'],
+          text: (h.text as string).slice(0, 2000),
+          ...(typeof h.tags === 'string' && h.tags ? { tags: h.tags.slice(0, 100) } : {}),
+        }))
         .slice(-HISTORY_MAX)
     : [];
   return {
