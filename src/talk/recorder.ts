@@ -15,6 +15,8 @@ export interface Recording {
   hadSpeech: boolean;
   /** Отдано касанием (ребенок сам сказал «готово»), а не по паузе. */
   manual: boolean;
+  /** Сколько в фразе громких кусков (похожих на речь), мс. */
+  voicedMs: number;
 }
 
 /** Сведения о последней фразе — для проверки микрофона в панели взрослых. */
@@ -270,7 +272,7 @@ export class Recorder {
     const pcm = toPcm16k(this.chunks, rate);
     this.chunks = [];
     this.waiting = [];
-    resolve({ pcm, seconds: pcm.length / 32000, hadSpeech, manual });
+    resolve({ pcm, seconds: pcm.length / 32000, hadSpeech, manual, voicedMs: hadSpeech ? this.voicedMs : 0 });
   }
 
   private stats(ctx: AudioContext | null, manual: boolean, hadSpeech = false): MicStats {

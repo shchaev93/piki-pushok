@@ -156,6 +156,7 @@ describe('запрос к модели', () => {
     expect(u.action).toBeNull();
     expect(cleanForSpeech(u.text)).toBe('Не получится!');
     expect(cleanForSpeech('[что-то] Привет')).toBe('Привет');
+    expect(cleanForSpeech('Я уже схожил! Не грустю.')).toBe('Я уже сходил! Не грущу.');
   });
 
   it('ответ сервера несет эмоцию и действие; место попадает в промпт', async () => {

@@ -77,6 +77,7 @@ export function talkLeftMs(s: Readonly<Save>, day = localDay()): number {
 
 const EVENT_TEXT: Record<TalkEvent, string> = {
   start: '[Событие: начало разговора]',
+  back: '[Событие: вернулись к разговору]',
   warn: '[Событие: осталось 3 минуты]',
   end: '[Событие: время вышло]',
 };
@@ -91,8 +92,16 @@ export class TalkSession {
   onCue: ((c: Cue) => void) | null = null;
   /** Действие, которое попросили в комнате разговора: его сделает домик. */
   pendingCue: Cue | null = null;
-  /** Пушок сейчас делает действие (горка, батут…): слушать начнет, когда закончит, — иначе услышит свои «вжух» и «буммм». */
-  actionRunning = false;
+  /**
+   * До этого момента Пушок делает действие (горка, батут…): слушать начнет после, иначе услышит
+   * свои «вжух» и «буммм». Это срок, а не флаг: если действие прервали, он истечет сам.
+   */
+  actionUntil = 0;
+
+  /** Действие началось (на ms) или закончилось (0). */
+  setAction(ms: number) {
+    this.actionUntil = ms > 0 ? performance.now() + Math.min(ms, 12_000) : 0;
+  }
   readonly rec = new Recorder();
   readonly voice = new VoicePlayer();
   /** Поколение: после паузы или ухода старые ответы и записи никуда не идут. */
@@ -129,6 +138,7 @@ export class TalkSession {
   /** Вход в комнату «Разговор» (из касания). */
   enterRoom() {
     this.place = 'talk';
+    this.setAction(0); // действие из прошлой комнаты больше не идет
     this.prime();
     if (this.on) {
       if (this.phase === 'idle') this.resume();
@@ -153,6 +163,7 @@ export class TalkSession {
   /** Вход в домик или музыкальную комнату: если разговор идет — продолжается, после паузы — снова слушает. */
   enterPlace(place: 'home' | 'music') {
     this.place = place;
+    this.setAction(0); // действие из прошлой комнаты больше не идет (новая комната задаст свое)
     if (!this.on) {
       Sfx.usePlaybackSession();
       return;
@@ -163,6 +174,7 @@ export class TalkSession {
 
   /** Другие комнаты (облачко, магазин, кухня…): микрофон и голос выключаются, разговор на паузе. */
   suspend() {
+    this.setAction(0);
     if (this.on) {
       this.gen++;
       this.rec.close();
@@ -228,7 +240,10 @@ export class TalkSession {
         if (gen !== this.gen) return;
         this.g.store.update((s) => (s.talk.notebook = notebook));
       }
-      await this.exchange({ event: 'start' }, gen);
+      // недавно уже говорили (минут 15) — без длинного приветствия и пересказа сказки
+      const last = this.g.store.data.talk.history.at(-1);
+      const recent = !!last && Date.now() - last.at < 15 * 60_000;
+      await this.exchange({ event: recent ? 'back' : 'start' }, gen);
     } catch (e) {
       return this.onError(e, gen);
     }
@@ -256,8 +271,8 @@ export class TalkSession {
         }
         return;
       }
-      // пока катается или прыгает — не слушаем (его звуки попали бы в микрофон), но не дольше 12 с
-      for (let waited = 0; this.actionRunning && waited < 12_000 && gen === this.gen; waited += 100) {
+      // пока катается или прыгает — не слушаем (его звуки попали бы в микрофон)
+      while (performance.now() < this.actionUntil && gen === this.gen) {
         await new Promise((res) => setTimeout(res, 100));
       }
       if (gen !== this.gen) return;
@@ -274,8 +289,9 @@ export class TalkSession {
       }
       if (rec.seconds < 0.4) continue;
       try {
-        // сама нажала «готово» — ответ будет в любом случае; поймано по громкости — шум без слов пропускается
-        await this.exchange({ audio: toBase64(rec.pcm), quiet: !rec.manual }, gen);
+        // сама нажала «готово» или явно говорила (больше секунды) — Пушок ответит в любом случае,
+        // хотя бы «не расслышал»; короткий стук или вскрик без слов — молча слушает дальше
+        await this.exchange({ audio: toBase64(rec.pcm), quiet: !rec.manual && rec.voicedMs < 1000 }, gen);
       } catch (e) {
         this.onError(e, gen);
         // уснул или потерял связь — stop() уже сменил поколение, цикл закончится сам

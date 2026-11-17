@@ -17,7 +17,7 @@ interface Scenario {
   check: string;
   history?: [Role, string][];
   say?: string;
-  event?: 'start' | 'warn' | 'end';
+  event?: 'start' | 'back' | 'warn' | 'end';
   /** Где Пушок: в комнате разговора (по умолчанию) или в домике. */
   place?: 'talk' | 'home';
   /** Корзинка и готовые блюда (для готовки). */
@@ -65,6 +65,7 @@ const fill = (s: string) => s.replaceAll('{name}', kidName);
 
 const EVENT: Record<string, string> = {
   start: '[Событие: начало разговора]',
+  back: '[Событие: вернулись к разговору]',
   warn: '[Событие: осталось 3 минуты]',
   end: '[Событие: время вышло]',
 };

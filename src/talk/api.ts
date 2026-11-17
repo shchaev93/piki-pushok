@@ -3,11 +3,12 @@ import type { TalkTurn } from '../save/schema';
 
 // Связь с сервером Пушка. Адрес и код доступа вводят родители в панели взрослых.
 
-export type TalkEvent = 'start' | 'warn' | 'end';
+/** start — новый разговор, back — вернулись через несколько минут (без длинного приветствия). */
+export type TalkEvent = 'start' | 'back' | 'warn' | 'end';
 /** Эмоции Пушка: модель ставит пометку, игра показывает. */
 export type Emotion = 'joy' | 'laugh' | 'surprise' | 'sad' | 'think' | 'love' | 'sleepy';
 /** Действия в домике по просьбе ребенка. */
-export type Action = 'slide' | 'trampoline' | 'climber' | 'rope' | 'bath' | 'toilet' | 'table' | 'kitchen' | 'guitar' | 'sing';
+export type Action = 'slide' | 'trampoline' | 'climber' | 'rope' | 'bath' | 'toilet' | 'table' | 'kitchen' | 'guitar' | 'sing' | 'nap';
 /** Где сейчас Пушок: от этого зависит, что он может сделать. */
 export type Place = 'talk' | 'home' | 'music';
 

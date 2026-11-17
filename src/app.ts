@@ -115,13 +115,14 @@ export class App {
     this.hold = null;
     this.dragging.clear();
     this.scene.leave?.();
-    this.scene = this.make(id);
-    this.fade = FADE_MS;
-    // разговор идет в комнате «Разговор», в домике и в музыкальной комнате, в остальных — пауза
+    // разговор идет в комнате «Разговор», в домике и в музыкальной комнате, в остальных — пауза.
+    // Сначала разговор, потом комната: комната может сразу начать действие (горку), и оно не должно сброситься.
     const talk = this.game.talk;
     if (id === 'talk') talk.enterRoom();
     else if (id === 'home' || id === 'music') talk.enterPlace(id);
     else talk.suspend();
+    this.scene = this.make(id);
+    this.fade = FADE_MS;
     this.resize();
   }
 
@@ -153,6 +154,12 @@ export class App {
     e.preventDefault();
     this.sfx.unlock();
     if (this.adult.isOpen || (this.layout.portrait && !this.vertical)) return;
+    // разговор задремал или был на паузе (свернули игру): любое касание в комнате разговора,
+    // домике или музыкальной комнате снова включает слушание — касание нужно iPhone для звука
+    const talk = this.game.talk;
+    if (talk.on && talk.phase === 'idle' && (this.scene.id === 'talk' || this.scene.id === 'home' || this.scene.id === 'music')) {
+      talk.resume();
+    }
     const p = cssToScene(this.layout, e.clientX, e.clientY);
     const t = hitTest(this.targets(), p.x, p.y, this.layout.minTarget);
     if (t) {

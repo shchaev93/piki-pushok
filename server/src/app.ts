@@ -20,10 +20,11 @@ import { pcmSeconds, recognize, splitForTts, synthesize } from './speechkit.ts';
 // HTTP-сервер Пушка. Хранит только счетчики расходов; разговоры и тетрадка живут на телефоне.
 
 export type Turn = { role: 'kira' | 'pushok' | 'event'; text: string };
-export type GameEvent = 'start' | 'warn' | 'end';
+export type GameEvent = 'start' | 'back' | 'warn' | 'end';
 
 const EVENT_TEXT: Record<GameEvent, string> = {
   start: '[Событие: начало разговора]',
+  back: '[Событие: вернулись к разговору]',
   warn: '[Событие: осталось 3 минуты]',
   end: '[Событие: время вышло]',
 };
@@ -185,6 +186,8 @@ function basketOf(v: unknown): Record<string, number> {
 
 export async function talk(d: Deps, body: TalkBody) {
   const { cfg, budget } = d;
+  // неизвестное событие (старая или новая версия игры) — как будто его нет
+  if (body.event && !(body.event in EVENT_TEXT)) body = { ...body, event: undefined };
   const notebook = normalizeNotebook(body.notebook ?? emptyNotebook());
   const history = arr(body.history).filter((t): t is Turn => !!t && typeof (t as Turn).text === 'string') as Turn[];
 

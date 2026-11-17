@@ -125,6 +125,8 @@ export class HomeScene implements Scene {
   doAction(a: Action, cookList: FoodId[] | null = null) {
     const talk = this.g.talk;
     let script: Script;
+    /** Примерно сколько идет действие: столько разговор не слушает (закончится раньше — слушать начнет сразу). */
+    let ms = 4000;
     switch (a) {
       case 'table':
         script = this.pretendEat();
@@ -132,6 +134,7 @@ export class HomeScene implements Scene {
       case 'kitchen':
         // по-настоящему — только если все продукты правда есть в корзинке, иначе понарошку
         script = cookList && hasFoods(this.store.data.basket, cookList) ? this.realCook(cookList) : this.pretendCook();
+        ms = 8000;
         break;
       case 'guitar':
         script = this.playOrSing(true);
@@ -140,25 +143,28 @@ export class HomeScene implements Scene {
         script = this.playOrSing(false);
         break;
       default: {
-        const o = HOME_OBJECTS.find((x) => x.id === a)!;
+        // 'nap' — короткий сон в кроватке (днем и ночью одинаково: лег, поспал, встал)
+        const id: ActivityId = a === 'nap' ? 'bed' : a;
+        const o = HOME_OBJECTS.find((x) => x.id === id)!;
         this.store.update((s) => {
           s.home.pushokAt = o.id;
-          logEvent(s, `${ACTIVITY_TEXT[o.id]} (по ее просьбе)`);
+          logEvent(s, a === 'nap' ? 'немножко поспал в кроватке (по ее просьбе)' : `${ACTIVITY_TEXT[o.id]} (по ее просьбе)`);
         });
         this.ropeAngle = null;
         script = this.activity(o);
+        ms = CONFIG.activityMs[id] + 3000;
       }
     }
     const self = this;
     const wasSleeping = this.sleeping;
-    talk.actionRunning = true;
+    talk.setAction(ms + (wasSleeping ? 1500 : 0));
     this.pushok.run(a, (function* (): Script {
       try {
         if (wasSleeping) yield* self.wakeScript();
         yield* script;
       } finally {
         self.ropeAngle = null;
-        talk.actionRunning = false;
+        talk.setAction(0);
       }
     })());
   }
