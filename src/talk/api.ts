@@ -32,7 +32,10 @@ export interface TalkReply {
   reply: string;
   audio: string[];
   emotion?: Emotion | null;
+  /** Первое действие (так отвечает и старый сервер). */
   action?: Action | null;
+  /** Действия по порядку: «скатись с горки и попрыгай» — два. */
+  actions?: Action[] | null;
   /** Продукты для настоящей готовки (при action = 'kitchen'). */
   cook?: FoodId[] | null;
   /** Пометки в виде текста — для истории (модель видит, что показывала). */
@@ -85,8 +88,9 @@ export const api = {
     c: ServerConf,
     req: { audio?: string; event?: TalkEvent; history: TalkTurn[]; notebook: unknown; outfit: string; place: Place; quiet?: boolean; basket: Partial<Record<FoodId, number>>; dishes: string[]; game: GameState },
   ) => call<TalkReply>(c, '/talk', { ...req, history: toServer(req.history.slice(-24)) }),
-  notebook: (c: ServerConf, notebook: unknown, history: TalkTurn[]) =>
-    call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: history.map(({ role, text }) => ({ role, text })) }, 60000),
+  /** fresh — сколько последних реплик новые (те, что раньше, секретарь уже учел). */
+  notebook: (c: ServerConf, notebook: unknown, history: TalkTurn[], fresh: number) =>
+    call<{ notebook: unknown; changed: boolean }>(c, '/notebook', { notebook, history: history.map(({ role, text }) => ({ role, text })), fresh }, 60000),
   seed: (c: ServerConf) => call<{ notebook: unknown }>(c, '/seed'),
   health: (c: ServerConf) =>
     call<{ ok: boolean; model?: string; provider?: string; budget?: { llmUsd: number; voiceRub: number; limits: { dailyLlmUsd: number; dailyVoiceRub: number } } }>(

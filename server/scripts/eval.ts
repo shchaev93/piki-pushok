@@ -6,10 +6,10 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalizeNotebook, readGlossary } from '../src/app.ts';
+import { applySecretary, normalizeNotebook, readGlossary, secretaryMessages, type Turn } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { chat, type ChatMessage } from '../src/openrouter.ts';
-import { cleanForSpeech, extractCues, pushokSystemPrompt, secretarySystemPrompt, type GameState } from '../src/prompts.ts';
+import { cleanForSpeech, extractCues, pushokSystemPrompt, type GameState } from '../src/prompts.ts';
 
 type Role = 'kira' | 'pushok';
 interface Scenario {
@@ -30,7 +30,15 @@ interface Scenario {
 interface Scenarios {
   storyTitle: string;
   scenarios: Scenario[];
-  secretary: { id: string; check: string; history: [Role, string][] }[];
+  secretary: {
+    id: string;
+    check: string;
+    history: [Role, string][];
+    /** Сколько последних реплик новые (остальные секретарь уже учел). */
+    fresh?: number;
+    /** Что дописать в тетрадку перед прогоном (например, неверная новость). */
+    notebookExtra?: { news?: { date: string; text: string }[] };
+  }[];
 }
 
 const root = join(import.meta.dirname, '..');
@@ -134,31 +142,24 @@ for (const s of set.scenarios.filter((x) => picked(x.id))) {
 }
 
 for (const s of set.secretary.filter((x) => picked(x.id))) {
-  const transcript = s.history.map(([role, text]) => `${role === 'kira' ? 'Девочка' : 'Пушок'}: ${fill(text)}`).join('\n');
-  await run(
-    s.id,
-    s.check,
-    [
-      { role: 'system', content: secretarySystemPrompt(kidName) },
-      { role: 'user', content: `Сегодня ${today}.\n\nТЕКУЩАЯ ТЕТРАДКА:\n${JSON.stringify(seed)}\n\nСВЕЖИЙ КУСОК РАЗГОВОРА:\n${transcript}` },
-    ],
-    cfg.openrouter.secretaryMaxTokens,
-    (t) => {
-      try {
-        const nb = normalizeNotebook(JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)));
-        const story = nb.stories.find((x) => x.title === set.storyTitle);
-        return [
-          `сказок ${nb.stories.length} (было ${seed.stories.length}); currentStory: ${nb.currentStory}`,
-          `герои: ${story?.characters.map((c) => c.name).join(', ')}`,
-          `stoppedAt: ${story?.stoppedAt}`,
-          `news: ${nb.news.map((n) => n.text).join(' | ')}`,
-          `для родителей: ${nb.notesForParents.map((n) => n.text).join(' | ') || '—'}`,
-        ].join('\n\n');
-      } catch {
-        return `НЕ JSON: ${t.slice(0, 300)}`;
-      }
-    },
-  );
+  const history: Turn[] = s.history.map(([role, text]) => ({ role, text: fill(text) }));
+  const book = normalizeNotebook({ ...seed, news: [...seed.news, ...(s.notebookExtra?.news ?? [])] });
+  await run(s.id, s.check, secretaryMessages(kidName, book, history, s.fresh, today), cfg.openrouter.secretaryMaxTokens, (t) => {
+    const r = applySecretary(book, t, today);
+    if ('error' in r && r.error) return `ОШИБКА: ${r.error}: ${t.slice(0, 300)}`;
+    const nb = r.notebook;
+    const story = nb.stories.find((x) => x.title === set.storyTitle);
+    return [
+      `правки: \`${t.replace(/\s+/g, ' ').slice(0, 1500)}\``,
+      `применено ${r.applied}, пропущено ${r.skipped}`,
+      `сказок ${nb.stories.length} (было ${seed.stories.length}); сейчас: ${nb.currentStory}`,
+      `герои: ${story?.characters.map((c) => c.name).join(', ')}`,
+      `новые события: ${story?.events.slice(-3).map((e) => e.text).join(' | ')}`,
+      `stoppedAt: ${story?.stoppedAt}`,
+      `news: ${nb.news.map((n) => n.text).join(' | ')}`,
+      `для родителей: ${nb.notesForParents.map((n) => n.text).join(' | ') || '—'}`,
+    ].join('\n\n');
+  });
 }
 
 lines.push(`**Итого потрачено: $${spent.toFixed(4)}** (лимит $${CAP})`);

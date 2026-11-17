@@ -89,8 +89,8 @@ export class TalkScene implements Scene {
   }
 
   private onCue(c: Cue) {
-    if (c.action) {
-      // просят покататься с горки и т.п.: Пушок бежит в домик и делает это там
+    if (c.actions.length) {
+      // просят покататься с горки и т.п.: Пушок бежит в домик и делает это там (одно или два подряд)
       this.talk.pendingCue = c;
       this.g.go('home');
       return;

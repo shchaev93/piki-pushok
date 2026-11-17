@@ -37,15 +37,23 @@ describe('журнал игры для разговора', () => {
       { at: 0, role: 'kira', text: 'покатайся с горки пожалуйста' },
       { at: 0, role: 'pushok', text: 'Ура, качусь!', tags: '[действие: горка]' },
     ];
-    s.talk.notebook = { stories: [{ title: 'Лесная', stoppedAt: 'Тимка у речки', characters: [{ name: 'Тимка' }] }], currentStory: 'Лесная', news: [], notesForParents: [{ date: '2026-01-01', text: 'фея' }] };
+    s.talk.notebook = { stories: [{ title: 'Лесная', stoppedAt: 'Тимка у речки', characters: [{ name: 'Тимка' }], events: [{ text: 'Тимка нашел домик' }] }], currentStory: 'Лесная', news: [], notesForParents: [{ date: '2026-01-01', text: 'фея' }] };
     logEvent(s, 'катался с горки', 0);
     const t = exportText(s, '0.15.0', 0);
     expect(t).toContain('Игра: [Событие: начало разговора]');
     expect(t).toContain('Она: покатайся с горки пожалуйста');
     expect(t).toContain('Пушок: [действие: горка] Ура, качусь!');
     expect(t).toContain('- Лесная (герои: Тимка) — остановились: Тимка у речки');
+    expect(t).toContain('    · Тимка нашел домик');
     expect(t).toContain('- 2026-01-01: фея');
     expect(t).toContain('катался с горки');
+  });
+
+  it('тетрадка: старое сохранение считает всю прошлую историю уже записанной', () => {
+    const old = sanitize({ talk: { history: [{ at: 500, role: 'kira', text: 'привет' }, { at: 900, role: 'pushok', text: 'Привет!' }] } }, 1000);
+    expect(old.talk.notebookAt).toBe(900);
+    expect(sanitize({ talk: { notebookAt: 700, history: [{ at: 900, role: 'kira', text: 'а' }] } }, 1000).talk.notebookAt).toBe(700);
+    expect(sanitize({}, 1000).talk.notebookAt).toBe(0);
   });
 
   it('сводка для Пушка: где стоит, сытость, свежие события сначала', () => {

@@ -4,9 +4,10 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHandler, extractJson, normalizeNotebook, pcmPeak, talk, updateNotebook, type Deps } from '../src/app.ts';
+import { createHandler, extractJson, normalizeNotebook, pcmPeak, secretaryMessages, talk, updateNotebook, type Deps } from '../src/app.ts';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from '../src/budget.ts';
 import { loadConfig } from '../src/config.ts';
+import { applyOps, notebookText } from '../src/notebook.ts';
 import { cleanForSpeech, extractCues, pushokSystemPrompt } from '../src/prompts.ts';
 import { splitForTts } from '../src/speechkit.ts';
 
@@ -145,6 +146,7 @@ describe('запрос к модели', () => {
       text: '  Ура, качусь с горки!',
       emotion: 'joy',
       action: 'slide',
+      actions: ['slide'],
       cook: null,
       tags: '[эмоция: радость] [действие: горка]',
       unknown: [],
@@ -159,11 +161,22 @@ describe('запрос к модели', () => {
     expect(cleanForSpeech('Я уже схожил! Не грустю.')).toBe('Я уже сходил! Не грущу.');
   });
 
+  it('две просьбы подряд: два действия по порядку, третье не берется; готовка и действие вместе', () => {
+    const c = extractCues('[действие: горка] [действие: батут] [действие: лазилка] Сначала с горки, потом на батут!');
+    expect(c).toMatchObject({ action: 'slide', actions: ['slide', 'trampoline'], tags: '[действие: горка] [действие: батут]' });
+    expect(cleanForSpeech(c.text)).toBe('Сначала с горки, потом на батут!');
+    const k = extractCues('[эмоция: радость] [готовить: яблоко, семечки] [действие: кушать] Испеку пирог!');
+    expect(k).toMatchObject({ emotion: 'joy', action: 'kitchen', actions: ['kitchen', 'table'], cook: ['apple', 'seeds'] });
+    expect(k.tags).toBe('[эмоция: радость] [готовить: яблоко, семечки] [действие: кушать]');
+    // из одних продуктов два блюда не варятся
+    expect(extractCues('[готовить: сыр, хлебушек] [готовить: яблоко, морковка] Ой').actions).toEqual(['kitchen']);
+  });
+
   it('ответ сервера несет эмоцию и действие; место попадает в промпт', async () => {
     const { d, calls } = deps({}, { reply: '[эмоция: смех] [действие: батут] Прыг-прыг, хи-хи!' });
     const r = await talk(d, { text: 'попрыгай', history: [], place: 'home' });
     expect(r.reply).toBe('Прыг-прыг, хи-хи!');
-    expect(r).toMatchObject({ emotion: 'laugh', action: 'trampoline', tags: '[эмоция: смех] [действие: батут]' });
+    expect(r).toMatchObject({ emotion: 'laugh', action: 'trampoline', actions: ['trampoline'], tags: '[эмоция: смех] [действие: батут]' });
     const llm = calls.find((c) => c.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] };
     expect(llm.messages[0].content).toContain('Ты сейчас в домике');
   });
@@ -239,23 +252,153 @@ describe('запрос к модели', () => {
   });
 });
 
-describe('тетрадка', () => {
-  it('секретарь: JSON вытаскивается из ответа, тетрадка нормализуется', async () => {
-    const nb = { stories: [], currentStory: null, news: [], notesForParents: [] };
-    const updated = { stories: [{ title: 'Лесная', characters: [{ name: 'Тимка', about: 'котик, ходит' }], rules: ['не летает'], summary: 's', stoppedAt: 'x', updatedAt: '2026-11-17' }], currentStory: 'Лесная', news: [], notesForParents: [{ date: '2026-11-17', text: 'фея на батарейках' }] };
-    const { d } = deps({}, { reply: `Вот тетрадка: ${JSON.stringify(updated)} готово` });
-    const r = await updateNotebook(d, { notebook: nb, history: [{ role: 'kira', text: 'запиши фею' }] });
+describe('тетрадка: отдельные записи и правки секретаря', () => {
+  const base = () =>
+    normalizeNotebook({
+      stories: [
+        {
+          title: 'Лесная',
+          characters: [{ name: 'Тимка', about: 'котик' }],
+          rules: ['котик не летает'],
+          events: [{ date: '2026-11-16', text: 'Тимка нашел домик' }],
+          stoppedAt: 'у речки',
+          updatedAt: '2026-11-16',
+        },
+      ],
+      currentStory: 'Лесная',
+      news: [
+        { date: '2026-11-16', text: 'слепила котика' },
+        { date: '2026-11-16', text: 'у папы музыкальная комната' },
+      ],
+      notesForParents: [{ date: '2026-11-16', text: 'наушники с ушками' }],
+    });
+
+  it('секретарь присылает правки: новый герой, событие, записка, новая сказка', async () => {
+    const ops = {
+      ops: [
+        { op: 'hero', story: 's1', name: 'Звездочка', about: 'котенок с неба' },
+        { op: 'event', story: 's1', text: 'Тимка встретил Звездочку' },
+        { op: 'stopped', story: 's1', text: 'куда пойдут дальше?' },
+        { op: 'note', text: 'кукла с розовыми волосами' },
+        { op: 'event', story: 'Феечка в желуде', text: 'феечка живет в желуде' },
+      ],
+    };
+    const { d, calls } = deps({}, { reply: `Вот: ${JSON.stringify(ops)}` });
+    const lines: string[] = [];
+    d.log = (l) => lines.push(l);
+    const r = await updateNotebook(d, { notebook: base(), history: [{ role: 'kira', text: 'запиши куклу' }] });
     expect(r.changed).toBe(true);
-    expect(r.notebook.stories[0].characters[0].name).toBe('Тимка');
-    expect(r.notebook.notesForParents).toHaveLength(1);
+    const nb = r.notebook;
+    expect(nb.stories[0].characters.map((c) => c.name)).toEqual(['Тимка', 'Звездочка']);
+    expect(nb.stories[0].events.map((e) => e.text)).toEqual(['Тимка нашел домик', 'Тимка встретил Звездочку']);
+    expect(nb.stories[0].events[1].date).toBe('2026-11-17');
+    expect(nb.stories[0].stoppedAt).toBe('куда пойдут дальше?');
+    expect(nb.stories[0].updatedAt).toBe('2026-11-17');
+    expect(nb.notesForParents.map((n) => n.text)).toEqual(['наушники с ушками', 'кукла с розовыми волосами']);
+    // новая сказка появилась сама и стала текущей
+    expect(nb.stories[1]).toMatchObject({ title: 'Феечка в желуде', events: [{ text: 'феечка живет в желуде' }] });
+    expect(nb.currentStory).toBe('Феечка в желуде');
+    // секретарь видит записи с номерами
+    const sent = (calls.find((c) => c.url.endsWith('/chat/completions'))!.body as { messages: { content: string }[] }).messages[1].content;
+    expect(sent).toContain('s1h1 Тимка — котик');
+    expect(sent).toContain('s1e1 Тимка нашел домик');
+    expect(sent).toContain('n2 (2026-11-16) у папы музыкальная комната');
+    expect(sent).toContain('p1 (2026-11-16) наушники с ушками');
+    expect(lines[0]).toMatch(/правок 5, пропущено 0/);
+    expect(lines[0]).not.toContain('куклу');
   });
 
-  it('секретарь не может потерять сказки или записки', async () => {
-    const nb = normalizeNotebook({ stories: [{ title: 'Лесная' }, { title: 'Морская' }], notesForParents: [{ date: 'd', text: 'x' }] });
-    const { d } = deps({}, { reply: JSON.stringify({ stories: [{ title: 'Лесная' }], notesForParents: [] }) });
-    const r = await updateNotebook(d, { notebook: nb, history: [{ role: 'kira', text: 'а' }] });
+  it('номера — по тетрадке до правок; исправить, убрать; сказку целиком убрать нельзя', () => {
+    const r = applyOps(
+      base(),
+      [
+        { op: 'remove', id: 'n2' }, // событие игры попало в новости
+        { op: 'fix', id: 'n1', text: 'слепила котика из пластилина' },
+        { op: 'news', text: 'нарисовала закат' },
+        { op: 'fix', id: 's1h1', name: 'Тинка' }, // поправила имя
+        { op: 'fix', id: 's1r1', text: 'котик не летает, а ходит' },
+        { op: 'remove', id: 's1' },
+        { op: 'remove', id: 'n9' },
+        { op: 'news', text: 'Слепила котика из пластилина!' }, // уже есть
+        { op: 'полетели' },
+      ],
+      '2026-11-17',
+    );
+    expect(r.notebook.news.map((n) => n.text)).toEqual(['слепила котика из пластилина', 'нарисовала закат']);
+    expect(r.notebook.stories).toHaveLength(1);
+    expect(r.notebook.stories[0].characters[0]).toEqual({ name: 'Тинка', about: 'котик' });
+    expect(r.notebook.stories[0].rules).toEqual(['котик не летает, а ходит']);
+    expect(r).toMatchObject({ applied: 5, skipped: 4 });
+  });
+
+  it('за раз убирается не больше пяти записей', () => {
+    const nb = normalizeNotebook({ notesForParents: Array.from({ length: 8 }, (_, i) => ({ date: 'd', text: `пункт ${i}` })) });
+    const r = applyOps(nb, Array.from({ length: 8 }, (_, i) => ({ op: 'remove', id: `p${i + 1}` })), '2026-11-17');
+    expect(r.notebook.notesForParents).toHaveLength(3);
+  });
+
+  it('ответ не в виде правок (вся тетрадка целиком) — тетрадка как была', async () => {
+    const { d } = deps({}, { reply: JSON.stringify({ stories: [], notesForParents: [] }) });
+    const r = await updateNotebook(d, { notebook: base(), history: [{ role: 'kira', text: 'а' }] });
     expect(r.changed).toBe(false);
-    expect(r.notebook.stories).toHaveLength(2);
+    expect(r.notebook.stories).toHaveLength(1);
+    expect(r.notebook.notesForParents).toHaveLength(1);
+    const bad = await updateNotebook(deps({}, { reply: 'не знаю' }).d, { notebook: base(), history: [{ role: 'kira', text: 'а' }] });
+    expect(bad).toMatchObject({ changed: false, error: 'не удалось разобрать ответ' });
+  });
+
+  it('старые реплики отдельно от новых: секретарь пишет только новое', () => {
+    const h = [
+      { role: 'kira' as const, text: 'старое' },
+      { role: 'pushok' as const, text: 'ответ' },
+      { role: 'kira' as const, text: 'новое' },
+    ];
+    const m = secretaryMessages('Тестия', base(), h, 1, '2026-11-17')[1].content;
+    expect(m).toContain('ПРЕДЫДУЩИЕ РЕПЛИКИ (уже учтены):\nДевочка: старое\nПушок: ответ\n\nНОВЫЕ РЕПЛИКИ:\nДевочка: новое');
+    expect(secretaryMessages('Тестия', base(), h, undefined, 'x')[1].content).not.toContain('ПРЕДЫДУЩИЕ');
+  });
+
+  it('старая тетрадка (пересказ одним куском) делится на отдельные события', () => {
+    const summary = 'Тата превратилась в леопарда. Бабушка Руми испугалась! Потом все помирились и пили чай. ' + 'Был большой бал в Облачном замке. '.repeat(8);
+    const n = normalizeNotebook({ stories: [{ title: 'Тата', summary, updatedAt: '2026-11-15' }], currentStory: 'тата' });
+    expect(n.stories[0].events.length).toBeGreaterThan(1);
+    for (const e of n.stories[0].events) expect(e.text.length).toBeLessThanOrEqual(200);
+    expect(n.stories[0].events[0]).toMatchObject({ date: '2026-11-15', text: expect.stringMatching(/^Тата превратилась в леопарда\. Бабушка Руми испугалась!/) });
+    expect(n.currentStory).toBe('Тата');
+  });
+
+  it('событий слишком много: начало сказки и свежее остаются', () => {
+    const events = Array.from({ length: 40 }, (_, i) => ({ date: 'd', text: `событие ${i + 1}` }));
+    const e = normalizeNotebook({ stories: [{ title: 'Т', events }] }).stories[0].events.map((x) => x.text);
+    expect(e).toHaveLength(30);
+    expect(e.slice(0, 5)).toEqual(['событие 1', 'событие 2', 'событие 3', 'событие 4', 'событие 15']);
+    expect(e.at(-1)).toBe('событие 40');
+  });
+
+  it('Пушку тетрадка приходит простым текстом: текущая сказка целиком, другие коротко', () => {
+    const nb = base();
+    nb.stories.push({
+      title: 'Морская',
+      characters: [],
+      rules: [],
+      events: ['а', 'б', 'в', 'г', 'д', 'е'].map((t) => ({ date: '', text: `было ${t}` })),
+      stoppedAt: 'кит',
+      updatedAt: '',
+    });
+    nb.notesForParents = Array.from({ length: 15 }, (_, i) => ({ date: 'd', text: `записка ${i + 1}` }));
+    const t = notebookText(nb, 'Тестия');
+    expect(t).toContain('Сейчас сочиняем сказку «Лесная».');
+    expect(t).toContain('Герои: Тимка — котик.');
+    expect(t).toContain('- Тимка нашел домик');
+    expect(t).toContain('Остановились: у речки');
+    expect(t).toContain('- было а\n- было г\n- было д\n- было е');
+    expect(t).not.toContain('было б');
+    expect(t).toContain('НОВОСТИ ИЗ ЖИЗНИ ТЕСТИЯ');
+    expect(t).toContain('записка 15');
+    expect(t).not.toContain('записка 5\n');
+    const p = pushokSystemPrompt({ kidName: 'Тестия', notebook: nb, outfit: '', today: 'x', glossary: '' });
+    expect(p).toContain('СКАЗКА «Лесная»');
+    expect(p).not.toContain('"stories"');
   });
 
   it('мусор и лишний размер обрезаются', () => {

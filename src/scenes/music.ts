@@ -6,6 +6,7 @@ import { during, Pushok, type Script } from '../pushok/actor';
 import { MUSIC_SPRITES, STAR_SPRITES } from '../sprites/items';
 import { emotionScript } from '../pushok/emotion';
 import { logEvent } from '../game/journal';
+import type { Action } from '../talk/api';
 import type { Cue } from '../talk/session';
 import { Particles } from './particles';
 import type { Game, Scene } from './scene';
@@ -64,12 +65,17 @@ export class MusicScene implements Scene {
   }
 
   private onCue(c: Cue) {
-    if (c.action === 'sing') return this.mic();
-    if (c.action === 'guitar') return this.tapPushok();
-    if (c.action) {
-      // горка, батут, готовка — это в домике: Пушок бежит туда
-      this.g.talk.pendingCue = c;
-      this.g.go('home');
+    if (c.actions.length) {
+      // песня и гитара — здесь; горка, батут, готовка — в домике: Пушок бежит туда (после того, что делает здесь)
+      const i = c.actions.findIndex((a) => a !== 'sing' && a !== 'guitar');
+      const here = i < 0 ? c.actions : c.actions.slice(0, i);
+      const rest = i < 0 ? [] : c.actions.slice(i);
+      const toHome = () => {
+        this.g.talk.pendingCue = { ...c, actions: rest };
+        this.g.go('home');
+      };
+      if (!here.length) return toHome();
+      this.pushok.run(here[0] === 'sing' ? 'sing' : 'music', this.cueScript(here, rest.length ? toHome : null));
       return;
     }
     if (c.emotion && !this.pushok.busy) {
@@ -187,6 +193,27 @@ export class MusicScene implements Scene {
       this.g.sfx.play('joy');
       this.pushok.run(null, this.pushok.joy(2, 4));
     }
+  }
+
+  /** Попросили голосом: спеть и/или сыграть на гитаре, по порядку; потом, если надо, — в домик. */
+  private *cueScript(list: Action[], then: (() => void) | null): Script {
+    const p = this.pushok;
+    for (const [i, a] of list.entries()) {
+      if (i > 0) {
+        p.resetPose();
+        p.busy = a === 'sing' ? 'sing' : 'music';
+      }
+      if (a === 'sing') yield* this.singScript();
+      else if (p.guitar) {
+        this.played('играл на гитаре', 2500);
+        this.g.sfx.melody(p.guitar);
+        yield* this.guitarScript();
+      } else {
+        this.g.sfx.play('joy');
+        yield* p.joy(2, 4);
+      }
+    }
+    then?.();
   }
 
   private *guitarScript(): Script {

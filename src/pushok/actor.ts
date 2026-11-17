@@ -104,7 +104,8 @@ export class Pushok {
     }
   }
 
-  private resetPose() {
+  /** Обычная поза: между шагами одного сценария (два действия подряд) и после него. */
+  resetPose() {
     this.frame = 'base';
     this.lift = 0;
     this.sortY = null;

@@ -66,6 +66,8 @@ export interface TalkState {
   warned: boolean;
   /** Тетрадка Пушка (сказки, новости, записки для родителей). Форму проверяет сервер. */
   notebook: unknown;
+  /** До какой реплики (время at) секретарь уже записал разговор в тетрадку. */
+  notebookAt: number;
   history: TalkTurn[];
 }
 
@@ -111,6 +113,7 @@ export const defaultTalk = (): TalkState => ({
   extraMs: 0,
   warned: false,
   notebook: null,
+  notebookAt: 0,
   history: [],
 });
 
@@ -167,6 +170,8 @@ function talkOf(v: unknown): TalkState {
     extraMs: num(t.extraMs, 0),
     warned: t.warned === true,
     notebook: isObj(t.notebook) ? t.notebook : null,
+    // старое сохранение: все, что было раньше, тетрадка уже знает
+    notebookAt: typeof t.notebookAt === 'number' && Number.isFinite(t.notebookAt) ? t.notebookAt : (history.at(-1)?.at ?? 0),
     history,
   };
 }

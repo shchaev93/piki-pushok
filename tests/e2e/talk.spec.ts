@@ -69,6 +69,9 @@ interface Mock {
   body?: unknown;
   /** Что добавить к ответу на фразу (эмоция, действие). */
   extra?: Record<string, unknown>;
+  /** Запросы секретарю и что он отвечает (по умолчанию — тетрадка без изменений). */
+  notebooks?: Record<string, unknown>[];
+  nbReply?: Record<string, unknown>;
 }
 
 type Dbg2 = { app: { game: { talk: { phase: string; on: boolean; place: string } }; scene: { id: string; pushok?: { busy: string | null } } } };
@@ -84,7 +87,11 @@ async function mockServer(page: Page, m: Mock) {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     if (url.pathname === '/seed') return route.fulfill({ json: { notebook: { stories: [{ title: 'Лесная', stoppedAt: 'Тимка у речки' }], currentStory: 'Лесная', news: [], notesForParents: [] } }, headers: cors });
     if (url.pathname === '/health') return route.fulfill({ json: { ok: true, model: 'z-ai/glm-5.3', provider: 'wafer/us', budget: { llmUsd: 0.01, voiceRub: 2, limits: { dailyLlmUsd: 0.3, dailyVoiceRub: 60 } } }, headers: cors });
-    if (url.pathname === '/notebook') return route.fulfill({ json: { notebook: JSON.parse(route.request().postData() ?? '{}').notebook, changed: false }, headers: cors });
+    if (url.pathname === '/notebook') {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      m.notebooks?.push(body);
+      return route.fulfill({ json: m.nbReply ?? { notebook: body.notebook, changed: false }, headers: cors });
+    }
     if (url.pathname === '/talk') {
       const body = JSON.parse(route.request().postData() ?? '{}');
       m.talks.push(body);
@@ -206,6 +213,83 @@ test('разговор: «приготовь» — Пушок по-настоя�
   const s = await save(page);
   expect(s.dishes[0].dish).toBe('soup');
   expect(s.basket).toEqual({ apple: 2 });
+});
+
+test('разговор: две просьбы подряд — с горки, потом на батут, и снова слушает', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium');
+  const m: Mock = { talks: [], extra: { action: 'slide', actions: ['slide', 'trampoline'], tags: '[действие: горка] [действие: батут]' } };
+  await mockServer(page, m);
+  await withTalkSave(page, { serverUrl: SERVER, code: 'c', notebook: { stories: [] } });
+  await tap(page, 'btn:talk');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await tap(page, 'mic');
+  await expect.poll(async () => (await talkState(page)).scene, { timeout: 5000 }).toBe('home');
+  expect((await talkState(page)).busy).toBe('slide');
+  // после горки — батут, без новой просьбы; пока он прыгает, разговор не слушает
+  await expect.poll(async () => (await talkState(page)).busy, { timeout: 12000, intervals: [50] }).toBe('trampoline');
+  expect((await talkState(page)).phase).not.toBe('listening');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 15000 }).toBe('listening');
+  const j = (await save(page)).journal.map((e: { text: string }) => e.text);
+  expect(j.slice(-2)).toEqual(['катался с горки (по ее просьбе)', 'прыгал на батуте (по ее просьбе)']);
+});
+
+test('разговор: в музыкальной комнате «спой и скатись с горки» — поет в микрофон, потом бежит в домик', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium');
+  const m: Mock = { talks: [], extra: { action: 'sing', actions: ['sing', 'slide'], tags: '[действие: песня] [действие: горка]' } };
+  await mockServer(page, m);
+  await withTalkSave(page, { serverUrl: SERVER, code: 'c', notebook: { stories: [] } });
+  await tap(page, 'btn:talk');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await tap(page, 'btn:home');
+  await tap(page, 'btn:music');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => (window as unknown as { __piki: { app: { game: { talk: { rec: { finish(): void } } } } } }).__piki.app.game.talk.rec.finish());
+  await expect.poll(async () => (await talkState(page)).busy, { timeout: 5000, intervals: [50] }).toBe('sing');
+  expect((await talkState(page)).scene).toBe('music');
+  await expect.poll(async () => (await talkState(page)).scene, { timeout: 20000 }).toBe('home');
+  expect((await talkState(page)).busy).toBe('slide');
+});
+
+test('разговор: тетрадка — секретарю уходят только новые реплики, тетрадка запоминает, до какой дописана', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium');
+  const m: Mock = { talks: [], notebooks: [], nbReply: { notebook: { stories: [], currentStory: null, news: [{ date: 'd', text: 'слепила котика' }], notesForParents: [] }, changed: true } };
+  await mockServer(page, m);
+  await withTalkSave(page, { serverUrl: SERVER, code: 'c', notebook: { stories: [] } });
+  const finish = () => page.evaluate(() => (window as unknown as { __piki: { app: { game: { talk: { rec: { finish(): void } } } } } }).__piki.app.game.talk.rec.finish());
+  await tap(page, 'btn:talk');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await page.waitForTimeout(1200);
+  await finish();
+  await expect.poll(() => m.talks.length, { timeout: 5000 }).toBe(2);
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  // ушли в облачко — разговор на паузе, тетрадка дописывается
+  await tap(page, 'btn:home');
+  await tap(page, 'btn:cloud');
+  await expect.poll(() => m.notebooks!.length, { timeout: 5000 }).toBe(1);
+  const first = m.notebooks![0] as { history: { role: string }[]; fresh: number };
+  expect(first.history.map((t) => t.role)).toEqual(['event', 'pushok', 'kira', 'pushok']);
+  expect(first.fresh).toBe(4);
+  await expect.poll(async () => (await save(page)).talk.notebook.news?.[0]?.text).toBe('слепила котика');
+  const s1 = await save(page);
+  expect(s1.talk.notebookAt).toBe(s1.talk.history.at(-1).at);
+  // еще одна фраза в домике — секретарю уходят 2 новые реплики и прошлые для понимания
+  await tap(page, 'btn:home');
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await page.waitForTimeout(1200);
+  await finish();
+  await expect.poll(() => m.talks.length, { timeout: 5000 }).toBe(3);
+  await expect.poll(async () => (await talkState(page)).phase, { timeout: 5000 }).toBe('listening');
+  await tap(page, 'btn:cloud');
+  await expect.poll(() => m.notebooks!.length, { timeout: 5000 }).toBe(2);
+  const second = m.notebooks![1] as { history: { role: string }[]; fresh: number };
+  expect(second.history).toHaveLength(6);
+  expect(second.fresh).toBe(2);
+  // без новых реплик секретаря не зовем
+  await tap(page, 'btn:home');
+  await tap(page, 'btn:cloud');
+  await page.waitForTimeout(800);
+  expect(m.notebooks!.length).toBe(2);
 });
 
 test('разговор: в музыкальной комнате — Пушок слушает, знает про пианино и поет по просьбе', async ({ page, browserName }, info) => {

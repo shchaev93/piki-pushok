@@ -4,17 +4,8 @@ import { join } from 'node:path';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from './budget.ts';
 import type { Config } from './config.ts';
 import { chat, type ChatMessage } from './openrouter.ts';
-import {
-  cleanForSpeech,
-  emptyNotebook,
-  extractCues,
-  pushokSystemPrompt,
-  secretarySystemPrompt,
-  type Action,
-  type Emotion,
-  type GameState,
-  type Notebook,
-} from './prompts.ts';
+import { applyOps, emptyNotebook, normalizeNotebook, notebookForSecretary, type Notebook } from './notebook.ts';
+import { cleanForSpeech, extractCues, pushokSystemPrompt, secretarySystemPrompt, type Action, type Emotion, type GameState } from './prompts.ts';
 import { pcmSeconds, recognize, splitForTts, synthesize } from './speechkit.ts';
 
 // HTTP-сервер Пушка. Хранит только счетчики расходов; разговоры и тетрадка живут на телефоне.
@@ -82,39 +73,12 @@ export function createDeps(cfg: Config): Deps {
   };
 }
 
-// ---------- проверка тетрадки ----------
+// ---------- проверка запросов ----------
+
+export { normalizeNotebook } from './notebook.ts';
 
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const arr = (v: unknown) => (Array.isArray(v) ? v : []);
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
-
-/** Привести тетрадку любой формы к ожидаемой и ограничить размер (она едет в каждый запрос). */
-export function normalizeNotebook(v: unknown): Notebook {
-  const n = obj(v);
-  const dated = (x: unknown) => ({ date: str(obj(x).date, 10), text: str(obj(x).text, 300) });
-  return {
-    stories: arr(n.stories)
-      .slice(0, 10)
-      .map((s) => {
-        const o = obj(s);
-        return {
-          title: str(o.title, 60),
-          characters: arr(o.characters)
-            .slice(0, 20)
-            .map((c) => ({ name: str(obj(c).name, 40), about: str(obj(c).about, 200) }))
-            .filter((c) => c.name),
-          rules: arr(o.rules).slice(0, 10).map((r) => str(r, 150)).filter(Boolean),
-          summary: str(o.summary, 900),
-          stoppedAt: str(o.stoppedAt, 300),
-          updatedAt: str(o.updatedAt, 10),
-        };
-      })
-      .filter((s) => s.title),
-    currentStory: typeof n.currentStory === 'string' ? n.currentStory.slice(0, 60) : null,
-    news: arr(n.news).map(dated).filter((x) => x.text).slice(-15),
-    notesForParents: arr(n.notesForParents).map(dated).filter((x) => x.text).slice(-100),
-  };
-}
 
 function historyMessages(history: Turn[]): ChatMessage[] {
   return history.slice(-HISTORY_TURNS).map((t) =>
@@ -210,9 +174,10 @@ export async function talk(d: Deps, body: TalkBody) {
   let reply: string;
   let costUsd = 0;
   let usage = { prompt: 0, completion: 0, reasoning: 0 };
-  let cues: { emotion: Emotion | null; action: Action | null; cook: string[] | null; tags: string } = {
+  let cues: { emotion: Emotion | null; action: Action | null; actions: Action[]; cook: string[] | null; tags: string } = {
     emotion: null,
     action: null,
+    actions: [],
     cook: null,
     tags: '',
   };
@@ -253,7 +218,7 @@ export async function talk(d: Deps, body: TalkBody) {
     costUsd = r.costUsd;
     usage = r.usage;
     const c = extractCues(r.text);
-    cues = { emotion: c.emotion, action: c.action, cook: c.cook, tags: c.tags };
+    cues = { emotion: c.emotion, action: c.action, actions: c.actions, cook: c.cook, tags: c.tags };
     unknownTags = c.unknown;
     reply = cleanForSpeech(c.text) || FALLBACK;
   }
@@ -266,7 +231,7 @@ export async function talk(d: Deps, body: TalkBody) {
   budget.countRequest();
   d.log?.(
     `talk ${body.event ?? '-'}: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), распознано ${heard.length} симв., ` +
-      `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.action ?? '-'}${cues.cook ? `(${cues.cook.join('+')})` : ''}` : ''}` +
+      `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.actions.join('+') || '-'}${cues.cook ? `(${cues.cook.join('+')})` : ''}` : ''}` +
       `${unknownTags.length ? ` непонятные пометки ${unknownTags.join(' ')}` : ''}; ` +
       `распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс; ` +
       `${body.place ?? '-'}, история ${history.length}, вход ${usage.prompt} ток.; ` +
@@ -285,40 +250,56 @@ export function pcmPeak(pcm: Buffer): number {
 interface NotebookBody {
   notebook?: unknown;
   history?: Turn[];
+  /** Сколько последних реплик новые; те, что раньше, уже учтены (только для понимания). Нет — все новые. */
+  fresh?: number;
+}
+
+const who = (t: Turn) => (t.role === 'kira' ? 'Девочка' : t.role === 'pushok' ? 'Пушок' : 'Игра');
+
+/** Запрос секретарю: тетрадка с номерами записей и кусок разговора (старое отдельно от нового). */
+export function secretaryMessages(kidName: string, notebook: Notebook, history: Turn[], fresh: number | undefined, today: string): ChatMessage[] {
+  const h = history.slice(-40);
+  const n = typeof fresh === 'number' && Number.isInteger(fresh) && fresh > 0 ? Math.min(fresh, h.length) : h.length;
+  const lines = (list: Turn[]) => list.map((t) => `${who(t)}: ${t.text}`).join('\n');
+  const old = h.slice(0, h.length - n);
+  const talk = old.length
+    ? `ПРЕДЫДУЩИЕ РЕПЛИКИ (уже учтены):\n${lines(old)}\n\nНОВЫЕ РЕПЛИКИ:\n${lines(h.slice(-n))}`
+    : `НОВЫЕ РЕПЛИКИ:\n${lines(h)}`;
+  return [
+    { role: 'system', content: secretarySystemPrompt(kidName) },
+    { role: 'user', content: `Сегодня ${today}.\n\nТЕТРАДКА:\n${notebookForSecretary(notebook)}\n\n${talk}` },
+  ];
+}
+
+/** Применить ответ секретаря к тетрадке. Не разобрали — тетрадка как была. */
+export function applySecretary(notebook: Notebook, text: string, today: string) {
+  try {
+    const j = extractJson(text) as { ops?: unknown };
+    if (!Array.isArray(j.ops)) return { notebook, applied: 0, skipped: 0, error: 'нет списка правок' };
+    return applyOps(notebook, j.ops, today);
+  } catch {
+    return { notebook, applied: 0, skipped: 0, error: 'не удалось разобрать ответ' };
+  }
 }
 
 export async function updateNotebook(d: Deps, body: NotebookBody) {
   const notebook = normalizeNotebook(body.notebook ?? emptyNotebook());
   const history = arr(body.history).filter((t): t is Turn => !!t && typeof (t as Turn).text === 'string') as Turn[];
   if (!history.length) return { notebook, changed: false, costUsd: 0 };
-  const transcript = history
-    .slice(-40)
-    .map((t) => `${t.role === 'kira' ? 'Девочка' : t.role === 'pushok' ? 'Пушок' : 'Игра'}: ${t.text}`)
-    .join('\n');
-  const r = await chat(
-    d.cfg.openrouter,
-    [
-      { role: 'system', content: secretarySystemPrompt(d.cfg.kidName) },
-      {
-        role: 'user',
-        content: `Сегодня ${moscowDate(d.now())}.\n\nТЕКУЩАЯ ТЕТРАДКА:\n${JSON.stringify(notebook)}\n\nСВЕЖИЙ КУСОК РАЗГОВОРА:\n${transcript}`,
-      },
-    ],
-    d.cfg.openrouter.secretaryMaxTokens,
-    d.fetch,
-  );
+  const today = moscowDate(d.now());
+  const r = await chat(d.cfg.openrouter, secretaryMessages(d.cfg.kidName, notebook, history, body.fresh, today), d.cfg.openrouter.secretaryMaxTokens, d.fetch);
   d.budget.addLlm(r.costUsd);
-  d.log?.(`тетрадка: кусок ${history.length} реплик, вход ${r.usage.prompt} ток., выход ${r.usage.completion}; $${r.costUsd.toFixed(5)}`);
-  try {
-    const updated = normalizeNotebook(extractJson(r.text));
-    // защита: секретарь не должен терять сказки и записки целиком
-    if (updated.stories.length < notebook.stories.length || updated.notesForParents.length < notebook.notesForParents.length) {
-      return { notebook, changed: false, costUsd: r.costUsd, error: 'секретарь потерял записи' };
-    }
-    return { notebook: updated, changed: true, costUsd: r.costUsd };
-  } catch {
-    return { notebook, changed: false, costUsd: r.costUsd, error: 'не удалось разобрать ответ' };
-  }
+  const res = applySecretary(notebook, r.text, today);
+  d.log?.(
+    `тетрадка: кусок ${history.length} реплик (новых ${body.fresh ?? 'все'}), вход ${r.usage.prompt} ток., выход ${r.usage.completion} ` +
+      `(размышления ${r.usage.reasoning}); правок ${res.applied}, пропущено ${res.skipped}${'error' in res && res.error ? `, ${res.error}` : ''}; $${r.costUsd.toFixed(5)}`,
+  );
+  return {
+    notebook: res.notebook,
+    changed: res.applied > 0,
+    costUsd: r.costUsd,
+    ...('error' in res && res.error ? { error: res.error } : {}),
+  };
 }
 
 export function seed(d: Deps) {

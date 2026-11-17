@@ -17,10 +17,14 @@ export type TalkPhase = 'connecting' | 'listening' | 'thinking' | 'speaking' | '
 export type Why = 'time' | 'budget' | 'config' | 'auth' | 'network' | 'mic' | null;
 export interface Cue {
   emotion: Emotion | null;
-  action: Action | null;
-  /** Продукты из корзинки для настоящей готовки (action = 'kitchen'). */
+  /** Действия по порядку: одно или два («скатись с горки и попрыгай на батуте»). */
+  actions: Action[];
+  /** Продукты из корзинки для настоящей готовки (действие 'kitchen'). */
   cook: FoodId[] | null;
 }
+
+/** Сколько действий подряд Пушок делает по одной просьбе. */
+export const MAX_ACTIONS = 2;
 
 const T = CONFIG.talk;
 
@@ -110,6 +114,7 @@ export class TalkSession {
   private pendingEvent: TalkEvent | null = null;
   private endDue = false;
   private turnsSinceNotebook = 0;
+  private notebookBusy = false;
   private failures = 0;
 
   constructor(private g: Game) {}
@@ -330,7 +335,9 @@ export class TalkSession {
       if (d.talk.history.length > 400) d.talk.history.splice(0, d.talk.history.length - 400);
     });
     if (r.heard) this.turnsSinceNotebook++;
-    if (r.emotion || r.action) this.onCue?.({ emotion: r.emotion ?? null, action: r.action ?? null, cook: r.cook ?? null });
+    // старый сервер присылает одно действие (action), новый — список (actions)
+    const actions = (r.actions?.length ? r.actions : r.action ? [r.action] : []).slice(0, MAX_ACTIONS);
+    if (r.emotion || actions.length) this.onCue?.({ emotion: r.emotion ?? null, actions, cook: r.cook ?? null });
     if (gen !== this.gen) return;
     this.phase = 'speaking';
     await this.voice.play(r.audio);
@@ -346,16 +353,31 @@ export class TalkSession {
     await new Promise((res) => setTimeout(res, 300));
   }
 
+  /**
+   * Секретарь дописывает тетрадку: отправляем новые реплики (с которых он еще не писал)
+   * и несколько прошлых для понимания. Не получилось — эти реплики уйдут в следующий раз.
+   */
   private async saveNotebook() {
-    if (!this.turnsSinceNotebook) return;
+    if (this.notebookBusy) return;
     const s = this.g.store.data;
-    const chunk = s.talk.history.slice(-Math.max(8, this.turnsSinceNotebook * 2 + 2));
+    const h = s.talk.history;
+    let first = h.findIndex((t) => t.at > s.talk.notebookAt);
+    if (first < 0 || !h.slice(first).some((t) => t.role === 'kira')) return;
+    first = Math.max(first, h.length - 34); // долго не получалось — хватит самого свежего
+    const chunk = h.slice(Math.max(0, first - 6));
+    const upto = h[h.length - 1].at;
     this.turnsSinceNotebook = 0;
+    this.notebookBusy = true;
     try {
-      const r = await api.notebook(this.conf, s.talk.notebook, chunk);
-      if (r.changed) this.g.store.update((d) => (d.talk.notebook = r.notebook));
+      const r = await api.notebook(this.conf, s.talk.notebook, chunk, h.length - first);
+      this.g.store.update((d) => {
+        if (r.changed) d.talk.notebook = r.notebook;
+        d.talk.notebookAt = Math.max(d.talk.notebookAt, upto);
+      });
     } catch {
       /* тетрадка обновится в следующий раз */
+    } finally {
+      this.notebookBusy = false;
     }
   }
 

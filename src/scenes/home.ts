@@ -19,7 +19,7 @@ import { bitmap } from '../sprites/render';
 import { emotionScript } from '../pushok/emotion';
 import { ACTIVITY_TEXT, DISH_TEXT, FOOD_TEXT, logEvent } from '../game/journal';
 import type { Action } from '../talk/api';
-import type { Cue } from '../talk/session';
+import { MAX_ACTIONS, type Cue } from '../talk/session';
 
 /** Предмет домика: где стоит, где Пушок отдыхает после занятия. */
 interface HomeObject {
@@ -105,7 +105,7 @@ export class HomeScene implements Scene {
     // разговор продолжается в домике: эмоции и действия из ответов Пушка
     g.talk.onCue = (c) => this.onCue(c);
     const cue = g.talk.takeCue();
-    if (cue?.action) this.doAction(cue.action, cue.cook);
+    if (cue?.actions.length) this.doActions(cue.actions, cue.cook);
   }
 
   // ---------- разговор ----------
@@ -115,33 +115,67 @@ export class HomeScene implements Scene {
   private shownDish: { dish: string; t: number } | null = null;
 
   private onCue(c: Cue) {
-    if (c.action) return this.doAction(c.action, c.cook);
+    if (c.actions.length) return this.doActions(c.actions, c.cook);
     if (c.emotion && !this.pushok.busy) {
       this.pushok.run('emotion', emotionScript(this.pushok, c.emotion, (s, x, y, vx, vy, life) => this.spawn(s, x, y, vx, vy, life)));
     }
   }
 
-  /** Кира попросила: покатайся, попрыгай, приготовь… Все понарошку и бесплатно, как по касанию. */
-  doAction(a: Action, cookList: FoodId[] | null = null) {
+  /**
+   * Ребенок попросил: покатайся, попрыгай, приготовь… Одно действие или два подряд
+   * («скатись с горки и попрыгай на батуте»). Все бесплатно, как по касанию.
+   */
+  doActions(list: Action[], cookList: FoodId[] | null = null) {
+    const steps = list.slice(0, MAX_ACTIONS);
+    if (!steps.length) return;
     const talk = this.g.talk;
-    let script: Script;
-    /** Примерно сколько идет действие: столько разговор не слушает (закончится раньше — слушать начнет сразу). */
-    let ms = 4000;
+    const self = this;
+    const p = this.pushok;
+    const wasSleeping = this.sleeping;
+    // пока идет действие, разговор не слушает (его «вжух» попали бы в микрофон): срок ставим на каждый шаг
+    talk.setAction(this.stepMs(steps[0]) + (wasSleeping ? 1500 : 0));
+    p.run(steps[0], (function* (): Script {
+      try {
+        if (wasSleeping) yield* self.wakeScript();
+        for (const [i, a] of steps.entries()) {
+          if (i > 0) {
+            p.resetPose();
+            p.busy = a;
+            talk.setAction(self.stepMs(a));
+          }
+          self.ropeAngle = null;
+          yield* self.step(a, cookList);
+        }
+      } finally {
+        self.ropeAngle = null;
+        talk.setAction(0);
+      }
+    })());
+  }
+
+  /** Примерно сколько идет действие (закончится раньше — слушать начнет сразу). */
+  private stepMs(a: Action): number {
+    if (a === 'kitchen') return 8000;
+    if (a === 'table' || a === 'guitar' || a === 'sing') return 4000;
+    return CONFIG.activityMs[a === 'nap' ? 'bed' : a] + 3000;
+  }
+
+  /** Одно действие по просьбе. Что именно делать, решается в момент начала (второе — после первого). */
+  private *step(a: Action, cookList: FoodId[] | null): Script {
     switch (a) {
       case 'table':
-        script = this.pretendEat();
-        break;
+        yield* this.pretendEat();
+        return;
       case 'kitchen':
         // по-настоящему — только если все продукты правда есть в корзинке, иначе понарошку
-        script = cookList && hasFoods(this.store.data.basket, cookList) ? this.realCook(cookList) : this.pretendCook();
-        ms = 8000;
-        break;
+        yield* cookList && hasFoods(this.store.data.basket, cookList) ? this.realCook(cookList) : this.pretendCook();
+        return;
       case 'guitar':
-        script = this.playOrSing(true);
-        break;
+        yield* this.playOrSing(true);
+        return;
       case 'sing':
-        script = this.playOrSing(false);
-        break;
+        yield* this.playOrSing(false);
+        return;
       default: {
         // 'nap' — короткий сон в кроватке (днем и ночью одинаково: лег, поспал, встал)
         const id: ActivityId = a === 'nap' ? 'bed' : a;
@@ -150,23 +184,9 @@ export class HomeScene implements Scene {
           s.home.pushokAt = o.id;
           logEvent(s, a === 'nap' ? 'немножко поспал в кроватке (по ее просьбе)' : `${ACTIVITY_TEXT[o.id]} (по ее просьбе)`);
         });
-        this.ropeAngle = null;
-        script = this.activity(o);
-        ms = CONFIG.activityMs[id] + 3000;
+        yield* this.activity(o);
       }
     }
-    const self = this;
-    const wasSleeping = this.sleeping;
-    talk.setAction(ms + (wasSleeping ? 1500 : 0));
-    this.pushok.run(a, (function* (): Script {
-      try {
-        if (wasSleeping) yield* self.wakeScript();
-        yield* script;
-      } finally {
-        self.ropeAngle = null;
-        talk.setAction(0);
-      }
-    })());
   }
 
   /** «Покушай»: сидит за столиком и жует (без крупного плана кормления). */
