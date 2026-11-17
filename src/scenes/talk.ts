@@ -1,3 +1,4 @@
+import { Sfx } from '../audio/sfx';
 import { CONFIG } from '../config';
 import type { Target } from '../engine/input';
 import type { Rect } from '../engine/layout';
@@ -102,6 +103,8 @@ export class TalkScene implements Scene {
     dress(this.pushok, g.store.data);
     this.pushok.x = P.x;
     this.pushok.y = P.y;
+    // в комнате разговора iPhone должен и записывать, и играть: в обычном режиме 'playback' микрофон дает тишину
+    Sfx.useSession('play-and-record');
     // вход в комнату — касание: здесь можно разбудить звук на iOS
     this.voice.unlock();
     const day = localDay();
@@ -232,6 +235,7 @@ export class TalkScene implements Scene {
     this.voice.stop();
     this.flushTime();
     void this.saveNotebook();
+    Sfx.usePlaybackSession();
   }
 
   private tapMic() {

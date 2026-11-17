@@ -2,6 +2,7 @@ import { CONFIG } from '../config';
 import type { Store } from '../save/store';
 import { localDay, talkLeftMs } from '../scenes/talk';
 import { api } from '../talk/api';
+import { micStats } from '../talk/recorder';
 
 // Раздел «Разговор с Пушком» в панели взрослых: настройка сервера, проверка связи
 // и расходов за день, минуты, записки ребенка для родителей, тетрадка и история.
@@ -39,11 +40,12 @@ export function createTalkSection(store: Store) {
   code.setAttribute('autocorrect', 'off');
   const check = el('button', 'btn', 'Сохранить и проверить связь');
   const checkNote = el('p', 'note');
+  const micNote = el('p', 'note mic-note');
   const notes = el('details', 'info');
   const book = el('details', 'info');
   const hist = el('details', 'info');
   const clear = el('button', 'btn', 'Стереть историю разговоров');
-  root.append(title, status, row, url, code, check, checkNote, notes, book, hist, clear);
+  root.append(title, status, row, url, code, check, checkNote, micNote, notes, book, hist, clear);
   let changed = false;
 
   const list = (box: HTMLElement, name: string, rows: string[]) => {
@@ -58,6 +60,14 @@ export function createTalkSection(store: Store) {
     toggle.textContent = t.enabled ? 'Разговор: включен' : 'Разговор: выключен';
     status.textContent =
       t.serverUrl && t.code ? `Сегодня осталось ${left} мин из ${total}.` : 'Чтобы Пушок заговорил, впишите адрес сервера и код доступа.';
+    const m = micStats;
+    micNote.textContent = m
+      ? `Микрофон, последняя запись (${fmt(m.at)}): ` +
+        (m.error
+          ? `ошибка ${m.error}, режим звука ${m.session}.`
+          : `${m.seconds.toFixed(1)} с, кусков ${m.frames}, громкость ${m.peak.toFixed(3)} при шуме ${m.noise.toFixed(3)}, ` +
+            `речь ${m.hadSpeech ? 'да' : 'нет'}${m.manual ? ', остановили касанием' : ''}; ${m.rate} Гц, движок ${m.ctxState}, режим звука ${m.session}.`)
+      : '';
     if (document.activeElement !== url) url.value = t.serverUrl;
     if (document.activeElement !== code) code.value = t.code;
     const nb = (t.notebook ?? {}) as Nb;

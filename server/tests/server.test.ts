@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createHandler, extractJson, normalizeNotebook, talk, updateNotebook, type Deps } from '../src/app.ts';
+import { createHandler, extractJson, normalizeNotebook, pcmPeak, talk, updateNotebook, type Deps } from '../src/app.ts';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from '../src/budget.ts';
 import { loadConfig } from '../src/config.ts';
 import { cleanForSpeech, pushokSystemPrompt } from '../src/prompts.ts';
@@ -123,6 +123,20 @@ describe('запрос к модели', () => {
     const r = await talk(d, { audio: Buffer.alloc(32000).toString('base64'), history: [] });
     expect(r.reply).toBe('Я не расслышал. Скажи еще разок?');
     expect(calls.some((c) => c.url.endsWith('/chat/completions'))).toBe(false);
+  });
+
+  it('журнал: только числа (длительность, громкость, длины), без слов ребенка', async () => {
+    const lines: string[] = [];
+    const { d } = deps({}, { heard: 'расскажи сказку' });
+    d.log = (l) => lines.push(l);
+    const pcm = Buffer.alloc(32000 * 2);
+    pcm.writeInt16LE(16384, 100); // пик 0.5
+    await talk(d, { audio: pcm.toString('base64'), history: [] });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('звук 2.0 с (пик 0.500)');
+    expect(lines[0]).toContain('распознано 15 симв.');
+    expect(lines[0]).not.toContain('сказку');
+    expect(pcmPeak(Buffer.alloc(3200))).toBe(0);
   });
 
   it('событие игры уходит модели в квадратных скобках', async () => {

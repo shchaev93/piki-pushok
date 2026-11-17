@@ -31,6 +31,8 @@ export interface Deps {
   now: () => number;
   /** Словарик мира ребенка из data/glossary.txt (может быть пустым). */
   glossary: string;
+  /** Журнал работы: только числа и длительности, без слов ребенка. */
+  log?: (line: string) => void;
 }
 
 export function readGlossary(file: string): string {
@@ -48,6 +50,7 @@ export function createDeps(cfg: Config): Deps {
     fetch,
     now: Date.now,
     glossary: readGlossary(cfg.glossaryFile),
+    log: (line) => console.log(`${new Date().toISOString().slice(11, 19)} ${line}`),
   };
 }
 
@@ -117,14 +120,20 @@ export async function talk(d: Deps, body: TalkBody) {
   const notebook = normalizeNotebook(body.notebook ?? emptyNotebook());
   const history = arr(body.history).filter((t): t is Turn => !!t && typeof (t as Turn).text === 'string') as Turn[];
 
+  const t0 = Date.now();
   // 1. что сказала (распознаем, если пришел звук)
   let heard = typeof body.text === 'string' ? body.text.trim().slice(0, 500) : '';
+  let audioSec = 0;
+  let peak = 0;
   if (body.audio) {
     const pcm = Buffer.from(body.audio, 'base64');
     if (pcm.length > MAX_AUDIO_BYTES) throw new HttpError(413, 'audio too long');
-    budget.addVoice(sttCostRub(pcmSeconds(pcm.length)));
+    audioSec = pcmSeconds(pcm.length);
+    peak = pcmPeak(pcm);
+    budget.addVoice(sttCostRub(audioSec));
     heard = pcm.length > 3200 ? await recognize(cfg.yandex, pcm, d.fetch) : '';
   }
+  const t1 = Date.now();
 
   // 2. ответ Пушка (пустое без события — без модели, это бесплатно)
   let reply: string;
@@ -154,13 +163,25 @@ export async function talk(d: Deps, body: TalkBody) {
     usage = r.usage;
     reply = cleanForSpeech(r.text) || FALLBACK;
   }
+  const t2 = Date.now();
 
   // 3. голос
   const ttsRub = splitForTts(reply).reduce((sum, part) => sum + ttsCostRub(part.length), 0);
   budget.addVoice(ttsRub);
   const audio = (await synthesize(cfg.yandex, reply, d.fetch)).map((b) => Buffer.from(b).toString('base64'));
   budget.countRequest();
+  d.log?.(
+    `talk ${body.event ?? '-'}: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), распознано ${heard.length} симв., ` +
+      `ответ ${reply.length} симв.; распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс`,
+  );
   return { heard, reply, audio, costUsd, usage };
+}
+
+/** Самая громкая точка записи 0..1 (тишина от сломанного микрофона дает 0). */
+export function pcmPeak(pcm: Buffer): number {
+  let max = 0;
+  for (let i = 0; i + 1 < pcm.length; i += 2) max = Math.max(max, Math.abs(pcm.readInt16LE(i)));
+  return max / 32768;
 }
 
 interface NotebookBody {

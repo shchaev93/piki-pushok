@@ -1,8 +1,13 @@
+import { Sfx } from '../audio/sfx';
 import { CONFIG } from '../config';
 
 // Запись голоса для SpeechKit: моно, 16 кГц, 16 бит (LPCM).
 // Запись заканчивается сама, когда ребенок замолчал (после речи пауза silenceMs),
 // по таймеру maxRecordMs или если речи не было noSpeechMs.
+//
+// iPhone: звуковой движок записи создается прямо в касании (после ожидания доступа
+// к микрофону iOS может не дать его запустить), а режим звука в комнате разговора
+// должен быть 'play-and-record' — в режиме 'playback' микрофон дает тишину.
 
 export interface Recording {
   pcm: Uint8Array;
@@ -12,7 +17,26 @@ export interface Recording {
   manual: boolean;
 }
 
+/** Сведения о последней записи — для проверки микрофона в панели взрослых. */
+export interface MicStats {
+  at: number;
+  session: string;
+  rate: number;
+  ctxState: string;
+  frames: number;
+  seconds: number;
+  peak: number;
+  noise: number;
+  hadSpeech: boolean;
+  manual: boolean;
+  error?: string;
+}
+
+export let micStats: MicStats | null = null;
+
 const T = CONFIG.talk;
+const NOISE_MS = 500;
+const MIN_SPEECH_RMS = 0.015;
 
 export class Recorder {
   /** Громкость 0..1 для анимации кнопки. */
@@ -20,51 +44,90 @@ export class Recorder {
   private stream: MediaStream | null = null;
   private ctx: AudioContext | null = null;
   private node: ScriptProcessorNode | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
   private chunks: Float32Array[] = [];
   private resolve: ((r: Recording) => void) | null = null;
+  private starting = false;
+  private stopRequested = false;
   private startedAt = 0;
   private lastVoiceAt = 0;
   private speech = false;
-  private noise = 0.01;
+  private noise = Infinity;
+  private peak = 0;
+  private frames = 0;
 
   get active() {
-    return this.resolve !== null;
+    return this.resolve !== null || this.starting;
   }
 
-  /** Начать запись. Промис завершается, когда запись закончится (сама или через stop()). */
+  /** Начать запись. Вызывать из касания. Промис завершается, когда запись закончится (сама или через stop()). */
   async start(): Promise<Recording> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    // движок создаем и будим до первого await, пока идет касание
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.ctx = new AC();
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
-    const src = this.ctx.createMediaStreamSource(this.stream);
-    this.node = this.ctx.createScriptProcessor(4096, 1, 1);
-    this.chunks = [];
+    const ctx = new AC();
+    this.ctx = ctx;
+    void ctx.resume().catch(() => {});
+    this.starting = true;
+    this.stopRequested = false;
     this.speech = false;
-    this.noise = 0.01;
+    this.noise = Infinity;
+    this.peak = 0;
+    this.frames = 0;
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (e) {
+      this.starting = false;
+      this.ctx = null;
+      void ctx.close().catch(() => {});
+      micStats = { ...this.stats(ctx, false), error: (e as Error).name || 'ошибка' };
+      throw e;
+    }
+    // если движок все еще спит — еще раз будим, но не ждем дольше секунды
+    if (ctx.state !== 'running') await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 1000))]);
+    const src = ctx.createMediaStreamSource(this.stream);
+    this.node = ctx.createScriptProcessor(4096, 1, 1);
+    this.chunks = [];
     this.startedAt = performance.now();
     this.lastVoiceAt = this.startedAt;
     this.node.onaudioprocess = (e) => this.onAudio(e.inputBuffer.getChannelData(0));
     src.connect(this.node);
-    this.node.connect(this.ctx.destination); // без этого Safari не вызывает onaudioprocess
-    return new Promise((r) => (this.resolve = r));
+    this.node.connect(ctx.destination); // без этого Safari не вызывает onaudioprocess
+    // сроки проверяем и по таймеру: если звук не идет совсем, запись все равно закончится
+    this.timer = setInterval(() => this.checkEnd(performance.now()), 250);
+    const done = new Promise<Recording>((r) => (this.resolve = r));
+    this.starting = false;
+    if (this.stopRequested) this.stop(true);
+    return done;
   }
 
   private onAudio(data: Float32Array) {
     this.chunks.push(new Float32Array(data));
+    this.frames++;
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
+    this.peak = Math.max(this.peak, rms);
     this.level = Math.min(1, rms * 8);
     const now = performance.now();
-    // первые полсекунды меряем фоновый шум, дальше речь = заметно громче шума
-    if (now - this.startedAt < 500) this.noise = Math.max(this.noise, rms);
-    else if (rms > Math.max(0.02, this.noise * 2.5)) {
-      this.speech = true;
-      this.lastVoiceAt = now;
+    // фоновый шум — самый тихий кусок первых полсекунды (ребенок мог заговорить сразу)
+    if (now - this.startedAt < NOISE_MS) {
+      this.noise = Math.min(this.noise, rms);
+    } else {
+      if (!Number.isFinite(this.noise)) this.noise = 0.005;
+      if (rms > Math.max(MIN_SPEECH_RMS, this.noise * 3)) {
+        this.speech = true;
+        this.lastVoiceAt = now;
+      } else {
+        this.noise = this.noise * 0.95 + rms * 0.05; // шум комнаты меняется — подстраиваемся
+      }
     }
+    this.checkEnd(now);
+  }
+
+  private checkEnd(now: number) {
+    if (!this.resolve) return;
     const elapsed = now - this.startedAt;
     if (
       (this.speech && now - this.lastVoiceAt > T.silenceMs) ||
@@ -75,15 +138,38 @@ export class Recorder {
     }
   }
 
+  private stats(ctx: AudioContext | null, manual: boolean): MicStats {
+    return {
+      at: Date.now(),
+      session: Sfx.sessionType(),
+      rate: ctx?.sampleRate ?? 0,
+      ctxState: ctx?.state ?? 'нет',
+      frames: this.frames,
+      seconds: this.frames ? (performance.now() - this.startedAt) / 1000 : 0,
+      peak: this.peak,
+      noise: Number.isFinite(this.noise) ? this.noise : 0,
+      hadSpeech: this.speech,
+      manual,
+    };
+  }
+
   /** Закончить запись сейчас (повторный тап по кнопке). */
   stop(manual = true) {
+    if (this.starting) {
+      this.stopRequested = true; // доступ к микрофону еще не дали — остановим сразу после
+      return;
+    }
     const resolve = this.resolve;
     if (!resolve) return;
     this.resolve = null;
-    const rate = this.ctx?.sampleRate ?? 48000;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    const ctx = this.ctx;
+    const rate = ctx?.sampleRate ?? 48000;
+    micStats = this.stats(ctx, manual);
     this.node?.disconnect();
     this.stream?.getTracks().forEach((t) => t.stop());
-    void this.ctx?.close();
+    void ctx?.close().catch(() => {});
     this.node = null;
     this.stream = null;
     this.ctx = null;

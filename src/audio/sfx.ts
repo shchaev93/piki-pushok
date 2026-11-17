@@ -36,12 +36,25 @@ export class Sfx {
    * (Safari 17+). Громкость кнопками сбоку, выключение в панели взрослых.
    */
   static usePlaybackSession() {
+    Sfx.useSession('playback');
+  }
+
+  /**
+   * Режим звука iPhone. 'playback' — только воспроизведение: микрофон в нем дает тишину.
+   * 'play-and-record' — для комнаты разговора: и запись, и голос Пушка (тоже играет в бесшумном режиме).
+   */
+  static useSession(type: 'playback' | 'play-and-record') {
     const nav = navigator as Navigator & { audioSession?: { type: string } };
     try {
-      if (nav.audioSession) nav.audioSession.type = 'playback';
+      if (nav.audioSession) nav.audioSession.type = type;
     } catch {
       /* старый Safari: звук подчиняется бесшумному режиму */
     }
+  }
+
+  /** Текущий режим звука (для проверки микрофона в панели взрослых). */
+  static sessionType(): string {
+    return (navigator as Navigator & { audioSession?: { type: string } }).audioSession?.type ?? 'нет';
   }
 
   /**
