@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { Budget, moscowDate, sttCostRub, ttsCostRub } from './budget.ts';
@@ -53,6 +53,23 @@ export function readGlossary(file: string): string {
   }
 }
 
+/**
+ * Журнал работы: в консоль контейнера и в файл data/talk-log.txt (переживает обновления сервера).
+ * Только числа и служебные пометки, без слов ребенка. Файл больше 2 МБ уходит в .1.
+ */
+export function fileLog(file: string) {
+  return (line: string) => {
+    const l = `${new Date().toISOString().slice(0, 19).replace('T', ' ')} ${line}`;
+    console.log(l);
+    try {
+      if (existsSync(file) && statSync(file).size > 2_000_000) renameSync(file, `${file}.1`);
+      appendFileSync(file, `${l}\n`);
+    } catch {
+      /* журнал не должен ломать разговор */
+    }
+  };
+}
+
 export function createDeps(cfg: Config): Deps {
   return {
     cfg,
@@ -60,7 +77,7 @@ export function createDeps(cfg: Config): Deps {
     fetch,
     now: Date.now,
     glossary: readGlossary(cfg.glossaryFile),
-    log: (line) => console.log(`${new Date().toISOString().slice(11, 19)} ${line}`),
+    log: fileLog(join(cfg.dataDir, 'talk-log.txt')),
   };
 }
 
@@ -200,7 +217,10 @@ export async function talk(d: Deps, body: TalkBody) {
   if (!heard && !body.event && body.quiet) {
     // шум без слов в режиме «слушает сам»: Пушок молчит и слушает дальше
     budget.countRequest();
-    d.log?.(`talk тишина: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), слов нет; распознавание ${t1 - t0} мс`);
+    d.log?.(
+      `talk тишина: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), слов нет; распознавание ${t1 - t0} мс; ` +
+        `голос ${sttCostRub(audioSec).toFixed(2)} ₽`,
+    );
     return { heard: '', reply: '', audio: [] as string[], costUsd: 0, usage, ...cues };
   }
   if (!heard && !body.event) {
@@ -245,7 +265,9 @@ export async function talk(d: Deps, body: TalkBody) {
     `talk ${body.event ?? '-'}: звук ${audioSec.toFixed(1)} с (пик ${peak.toFixed(3)}), распознано ${heard.length} симв., ` +
       `ответ ${reply.length} симв.${cues.tags ? ` ${cues.emotion ?? '-'}/${cues.action ?? '-'}${cues.cook ? `(${cues.cook.join('+')})` : ''}` : ''}` +
       `${unknownTags.length ? ` непонятные пометки ${unknownTags.join(' ')}` : ''}; ` +
-      `распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс`,
+      `распознавание ${t1 - t0} мс, модель ${t2 - t1} мс, голос ${Date.now() - t2} мс; ` +
+      `${body.place ?? '-'}, история ${history.length}, вход ${usage.prompt} ток.; ` +
+      `$${costUsd.toFixed(5)} + ${(sttCostRub(audioSec) + ttsRub).toFixed(2)} ₽`,
   );
   return { heard, reply, audio, costUsd, usage, ...cues };
 }
@@ -283,6 +305,7 @@ export async function updateNotebook(d: Deps, body: NotebookBody) {
     d.fetch,
   );
   d.budget.addLlm(r.costUsd);
+  d.log?.(`тетрадка: кусок ${history.length} реплик, вход ${r.usage.prompt} ток., выход ${r.usage.completion}; $${r.costUsd.toFixed(5)}`);
   try {
     const updated = normalizeNotebook(extractJson(r.text));
     // защита: секретарь не должен терять сказки и записки целиком

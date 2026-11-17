@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { logEvent } from '../src/game/journal';
 import { defaultSave, JOURNAL_MAX, sanitize } from '../src/save/schema';
 import { gameState } from '../src/talk/session';
+import { exportText } from '../src/talk/export';
 
 describe('журнал игры для разговора', () => {
   it('одинаковые события подряд склеиваются, разные — нет, старые уходят', () => {
@@ -27,6 +28,24 @@ describe('журнал игры для разговора', () => {
       { at: now, text: 'x'.repeat(120), n: 1 },
     ]);
     expect(sanitize({}, now).journal).toEqual([]);
+  });
+
+  it('выгрузка для разбора: история с пометками, тетрадка, журнал', () => {
+    const s = defaultSave(0);
+    s.talk.history = [
+      { at: 0, role: 'event', text: '[Событие: начало разговора]' },
+      { at: 0, role: 'kira', text: 'покатайся с горки пожалуйста' },
+      { at: 0, role: 'pushok', text: 'Ура, качусь!', tags: '[действие: горка]' },
+    ];
+    s.talk.notebook = { stories: [{ title: 'Лесная', stoppedAt: 'Тимка у речки', characters: [{ name: 'Тимка' }] }], currentStory: 'Лесная', news: [], notesForParents: [{ date: '2026-01-01', text: 'фея' }] };
+    logEvent(s, 'катался с горки', 0);
+    const t = exportText(s, '0.15.0', 0);
+    expect(t).toContain('Игра: [Событие: начало разговора]');
+    expect(t).toContain('Она: покатайся с горки пожалуйста');
+    expect(t).toContain('Пушок: [действие: горка] Ура, качусь!');
+    expect(t).toContain('- Лесная (герои: Тимка) — остановились: Тимка у речки');
+    expect(t).toContain('- 2026-01-01: фея');
+    expect(t).toContain('катался с горки');
   });
 
   it('сводка для Пушка: где стоит, сытость, свежие события сначала', () => {

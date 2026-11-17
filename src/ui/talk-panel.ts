@@ -3,6 +3,7 @@ import type { Store } from '../save/store';
 import { localDay, talkLeftMs } from '../talk/session';
 import { api } from '../talk/api';
 import { micStats } from '../talk/recorder';
+import { exportText } from '../talk/export';
 
 // Раздел «Разговор с Пушком» в панели взрослых: настройка сервера, проверка связи
 // и расходов за день, минуты, записки ребенка для родителей, тетрадка и история.
@@ -18,7 +19,7 @@ const fmt = (t: number) => new Date(t).toLocaleString('ru-RU', { day: 'numeric',
 
 type Nb = { stories?: { title?: string; stoppedAt?: string }[]; notesForParents?: { date?: string; text?: string }[] };
 
-export function createTalkSection(store: Store) {
+export function createTalkSection(store: Store, version = '') {
   const root = el('div', 'stars talk');
   const title = el('p', 'talk-title', 'Разговор с Пушком');
   const status = el('p', 'note');
@@ -45,7 +46,31 @@ export function createTalkSection(store: Store) {
   const book = el('details', 'info');
   const hist = el('details', 'info');
   const clear = el('button', 'btn', 'Стереть историю разговоров');
-  root.append(title, status, row, url, code, check, checkNote, micNote, notes, book, hist, clear);
+  // выгрузка для разбора: текст копируется, а родители сами решают, кому его показать
+  const exportBtn = el('button', 'btn', 'Скопировать разговоры для разбора');
+  const exportNote = el('p', 'note export-note');
+  const exportArea = el('textarea', 'field export-area');
+  exportArea.readOnly = true;
+  exportArea.rows = 6;
+  exportArea.hidden = true;
+  root.append(title, status, row, url, code, check, checkNote, micNote, notes, book, hist, exportBtn, exportNote, exportArea, clear);
+
+  exportBtn.addEventListener('click', async () => {
+    const text = exportText(store.data, version);
+    const n = store.data.talk.history.length;
+    try {
+      await navigator.clipboard.writeText(text);
+      exportArea.hidden = true;
+      exportNote.textContent = `Скопировано (${n} реплик). Вставьте в сообщение.`;
+    } catch {
+      // буфер обмена недоступен: показываем текст, его можно выделить и скопировать
+      exportArea.value = text;
+      exportArea.hidden = false;
+      exportArea.focus();
+      exportArea.select();
+      exportNote.textContent = 'Выделите текст ниже и скопируйте.';
+    }
+  });
   let changed = false;
 
   const list = (box: HTMLElement, name: string, rows: string[]) => {

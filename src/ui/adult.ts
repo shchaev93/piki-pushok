@@ -122,7 +122,7 @@ export function createAdultPanel(o: Opts): AdultPanel {
     renderStars();
   });
 
-  const talk = createTalkSection(o.store);
+  const talk = createTalkSection(o.store, o.version);
   panel.append(head, stars, talk.root, row, resetNote, update, info);
 
   // Обновление игры вручную: если на сайте новая версия, игра перезагрузится в нее.
