@@ -26,21 +26,22 @@ interface Scenarios {
 }
 
 const root = join(import.meta.dirname, '..');
-const data = join(root, 'data');
 const envFile = join(root, '.env');
-if (!existsSync(envFile)) {
-  console.error('Нет server/.env с OPENROUTER_API_KEY=... и KID_NAME=...');
-  process.exit(1);
+// Два режима: локально — настройки из server/.env и OpenRouter напрямую;
+// на сервере (в контейнере, .env рядом нет) — из окружения контейнера, OpenRouter через релей.
+const local = existsSync(envFile);
+const env: Record<string, string | undefined> = local ? {} : { ...process.env };
+if (local) {
+  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+  env.OPENROUTER_BASE_URL = env.OPENROUTER_BASE_URL_LOCAL ?? 'https://openrouter.ai/api/v1';
 }
-const env: Record<string, string> = {};
-for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-  if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-}
-// локально OpenRouter открывается напрямую (с прод-сервера — только через релей)
-const cfg = loadConfig({ ...env, OPENROUTER_BASE_URL: env.OPENROUTER_BASE_URL_LOCAL ?? 'https://openrouter.ai/api/v1' });
+const data = env.DATA_DIR ?? join(root, 'data');
+const cfg = loadConfig(env);
 if (!cfg.openrouter.apiKey || !env.KID_NAME) {
-  console.error('В server/.env нужны OPENROUTER_API_KEY и KID_NAME');
+  console.error('Нужны OPENROUTER_API_KEY и KID_NAME (в server/.env локально или в окружении контейнера)');
   process.exit(1);
 }
 const kidName = env.KID_NAME;
